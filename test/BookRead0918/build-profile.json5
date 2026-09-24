@@ -1,0 +1,142 @@
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\CuteDuan\\.ohos\\config\\default_BookRead0918_m5e9NYkzX0aW2plEgWrzSmwYekmfTq2bLcR02cYSCKE=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001BBA2DAA86644C0D5657FE143A62A8D7F753F22E471B067A0721246AF08A393F09D45765D82A4BB5",
+          "profile": "C:\\Users\\CuteDuan\\.ohos\\config\\default_BookRead0918_m5e9NYkzX0aW2plEgWrzSmwYekmfTq2bLcR02cYSCKE=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\CuteDuan\\.ohos\\config\\default_BookRead0918_m5e9NYkzX0aW2plEgWrzSmwYekmfTq2bLcR02cYSCKE=.p12",
+          "storePassword": "0000001B797F17CAF4E71AD4A29E2C985C596A0008A2B32A229364F3E27D3C2B96722937FC9CBE1C6AD0A1"
+        }
+      }
+    ],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+        "targetSdkVersion": "26.0.0",
+        "compatibleSdkVersion": "6.0.0(20)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          },
+          "externalNativeOptions": {
+            "abiFilters": [
+              "arm64-v8a",
+              "x86_64"
+            ]
+          }
+        }
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug"
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "common",
+      "srcPath": "./commons/common"
+    },
+    {
+      "name": "book_home",
+      "srcPath": "./feature/book_home"
+    },
+    {
+      "name": "book_person",
+      "srcPath": "./feature/book_person"
+    },
+    {
+      "name": "book_shelf",
+      "srcPath": "./feature/book_shelf"
+    },
+    {
+      "name": "book_read_kit",
+      "srcPath": "./feature/book_read_kit"
+    },
+    {
+      "name": "book_sort",
+      "srcPath": "./feature/book_sort"
+    },
+    {
+      "name": "swiper_card",
+      "srcPath": "./components/swiper_card"
+    },
+    {
+      "name": "reader_tool_bar",
+      "srcPath": "./components/reader_tool_bar"
+    },
+    {
+      "name": "base_common",
+      "srcPath": "./components/base_common"
+    },
+    {
+      "name": "aggregated_payment",
+      "srcPath": "./components/aggregated_payment"
+    },
+    {
+      "name": "custom_push",
+      "srcPath": "./components/custom_push"
+    },
+    {
+      "name": "incentive_ad",
+      "srcPath": "./components/incentive_ad"
+    },
+    {
+      "name": "membership",
+      "srcPath": "./components/membership"
+    },
+    {
+      "name": "aggregated_share",
+      "srcPath": "./components/aggregated_share"
+    },
+    {
+      "name": "aggregated_ads",
+      "srcPath": "./components/aggregated_ads"
+    },
+    {
+      "name": "module_ui_base",
+      "srcPath": "./components/module_ui_base"
+    },
+    {
+      "name": "module_privacy_agreement",
+      "srcPath": "./components/module_privacy_agreement"
+    },
+    {
+      "name": "dial_panel",
+      "srcPath": "./components/dial_panel"
+    },
+    {
+      "name": "image_preview",
+      "srcPath": "./components/image_preview"
+    },
+    {
+      "name": "customer_service_chat",
+      "srcPath": "./components/customer_service_chat"
+    }
+  ]
+}

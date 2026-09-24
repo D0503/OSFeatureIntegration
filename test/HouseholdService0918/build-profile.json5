@@ -1,0 +1,128 @@
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\CuteDuan\\.ohos\\config\\default_HouseholdService0918_EqN00KLWX2q1whgNHDocR1IPzgjgrMBpGugoNdkmhss=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001BFE348A9E71B050D8883F1D67548FE8302D8302395AF017F1CAAB5FCDA99661084316F5A76A3717",
+          "profile": "C:\\Users\\CuteDuan\\.ohos\\config\\default_HouseholdService0918_EqN00KLWX2q1whgNHDocR1IPzgjgrMBpGugoNdkmhss=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\CuteDuan\\.ohos\\config\\default_HouseholdService0918_EqN00KLWX2q1whgNHDocR1IPzgjgrMBpGugoNdkmhss=.p12",
+          "storePassword": "0000001BECCA72AE5B1924C72A1D3DD954FCF866C2B6DE364295236F70104080205F0ECF6B9DFC6262AA7A"
+        }
+      }
+    ],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+        "targetSdkVersion": "26.0.0",
+        "compatibleSdkVersion": "6.0.0(20)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          }
+        }
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug"
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./products/entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "lib_foundation",
+      "srcPath": "./commons/lib_foundation"
+    },
+    {
+      "name": "module_base",
+      "srcPath": "./components/module_base"
+    },
+    {
+      "name": "module_time_select",
+      "srcPath": "./components/module_time_select"
+    },
+    {
+      "name": "category_list",
+      "srcPath": "./components/category_list"
+    },
+    {
+      "name": "module_form",
+      "srcPath": "./components/module_form"
+    },
+    {
+      "name": "address_management",
+      "srcPath": "./components/address_management"
+    },
+    {
+      "name": "business_home",
+      "srcPath": "./features/business_home",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "business_mine",
+      "srcPath": "./features/business_mine",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "city_select",
+      "srcPath": "./components/city_select"
+    },
+    {
+      "name": "atomicservice_login",
+      "srcPath": "./components/atomicservice_login"
+    },
+    {
+      "name": "collect_personal_info",
+      "srcPath": "./components/collect_personal_info"
+    },
+    {
+      "name": "dial_panel",
+      "srcPath": "./components/dial_panel"
+    },
+    {
+      "name": "search",
+      "srcPath": "./components/search"
+    },
+    {
+      "name": "module_transition",
+      "srcPath": "./components/module_transition"
+    }
+  ]
+}

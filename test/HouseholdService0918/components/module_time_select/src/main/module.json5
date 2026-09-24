@@ -1,0 +1,10 @@
+{
+  "module": {
+    "name": "module_time_select",
+    "type": "har",
+    "deviceTypes": [
+      "default",
+      "tablet"
+    ]
+  }
+}
