@@ -1,0 +1,242 @@
+{
+  "schemaVersion": "1.1",
+  "featureId": "immersive-light",
+  "routeId": "arkui",
+  "minTargetApi": 26,
+  "activation": {
+    "globalDisableOverridesComponent": true,
+    "explicitDisable": "uiMaterial.Material.empty",
+    "undefinedMeaning": "restore-component-default-for-current-material-state"
+  },
+  "effectScopeValues": ["all-page", "navigation-title", "bottom-floating-tabbar"],
+  "groups": [
+    {
+      "id": "navigation",
+      "document": "components/navigation.md",
+      "components": [
+        {
+          "id": "navigation-title",
+          "names": ["Navigation", "NavDestination"],
+          "applicationDefaults": {
+            "default": { "enabled": false, "conditions": [] },
+            "enable": { "enabled": true, "conditions": [] }
+          },
+          "defaultStyle": "ULTRA_THIN",
+          "entries": ["NavigationTitleOptions.systemMaterial"],
+          "effectScopes": ["navigation-title"],
+          "constraints": ["prefer-BarStyle.STACK", "affects-back-button-and-non-custom-menu"]
+        },
+        {
+          "id": "tabs-bottom-bar",
+          "names": ["Tabs"],
+          "applicationDefaults": {
+            "default": {
+              "enabled": true,
+              "conditions": ["barFloatingStyle-effective", "barOverlap-true", "vertical-false", "barPosition-End"]
+            },
+            "enable": {
+              "enabled": true,
+              "conditions": ["barFloatingStyle-effective", "barOverlap-true", "vertical-false", "barPosition-End"]
+            }
+          },
+          "defaultStyle": "THIN",
+          "entries": ["FloatingTabBarStyle.systemMaterial"],
+          "effectScopes": ["bottom-floating-tabbar"],
+          "constraints": ["explicit-systemMaterial-optional-for-customization", "maskColor-transparent-by-default", "TabContent-unsupported", "scrollable-tab-tail-clearance", "floating-tabs-width-and-breakpoints"]
+        },
+        {
+          "id": "alphabet-indexer",
+          "names": ["AlphabetIndexer"],
+          "applicationDefaults": {
+            "default": { "enabled": true, "conditions": ["popupBackground-unset-or-undefined", "popupBackgroundBlurStyle-unset-or-undefined"] },
+            "enable": { "enabled": true, "conditions": ["popupBackground-unset-or-undefined", "popupBackgroundBlurStyle-unset-or-undefined"] }
+          },
+          "defaultStyle": "THICK",
+          "entries": ["popupBackground", "popupBackgroundBlurStyle"],
+          "effectScopes": ["all-page"],
+          "constraints": ["popupBackground-conflicts", "popupBackgroundBlurStyle-conflicts", "low-tier-white-background"]
+        }
+      ]
+    },
+    {
+      "id": "overlays",
+      "document": "components/overlays.md",
+      "components": [
+        {
+          "id": "toast",
+          "names": ["Toast"],
+          "applicationDefaults": {
+            "default": { "enabled": true, "conditions": ["background-color-blur-and-shadow-unset"] },
+            "enable": { "enabled": true, "conditions": [] }
+          },
+          "defaultStyle": "THICK",
+          "entries": ["ShowToastOptions.systemMaterial"],
+          "effectScopes": ["all-page"],
+          "constraints": ["backgroundColor-conflicts", "backgroundBlurStyle-conflicts"]
+        },
+        {
+          "id": "popup",
+          "names": ["Popup"],
+          "applicationDefaults": {
+            "default": { "enabled": false, "conditions": [] },
+            "enable": { "enabled": false, "conditions": [] }
+          },
+          "defaultStyle": null,
+          "entries": ["PopupOptions.systemMaterial"],
+          "effectScopes": ["all-page"],
+          "constraints": []
+        },
+        {
+          "id": "tips",
+          "names": ["Tips"],
+          "applicationDefaults": {
+            "default": { "enabled": false, "conditions": [] },
+            "enable": { "enabled": false, "conditions": [] }
+          },
+          "defaultStyle": null,
+          "entries": ["TipsOptions.systemMaterial"],
+          "effectScopes": ["all-page"],
+          "constraints": []
+        },
+        {
+          "id": "menu",
+          "names": ["Menu"],
+          "applicationDefaults": {
+            "default": { "enabled": false, "conditions": [] },
+            "enable": { "enabled": true, "conditions": [] }
+          },
+          "defaultStyle": "THICK",
+          "entries": ["ContextMenuOptions.systemMaterial"],
+          "effectScopes": ["all-page"],
+          "constraints": ["use-call-specific-options-type"]
+        },
+        {
+          "id": "dialog-sheet",
+          "names": ["AlertDialog", "CustomDialog", "ActionSheet", "Sheet", "PickerDialog", "CalendarPickerDialog", "DatePickerDialog", "TextPickerDialog", "TimePickerDialog"],
+          "applicationDefaults": {
+            "default": { "enabled": true, "conditions": ["background-color-blur-and-shadow-unset"] },
+            "enable": { "enabled": true, "conditions": [] }
+          },
+          "defaultStyle": "ULTRA_THICK",
+          "entries": ["CustomDialogControllerOptions.systemMaterial", "AlertDialogParam.systemMaterial", "ActionSheetOptions.systemMaterial", "SheetOptions.systemMaterial"],
+          "effectScopes": ["all-page"],
+          "constraints": ["background-conflicts", "avoid-large-material-area", "CalendarPicker-popup-unsupported"]
+        },
+        {
+          "id": "selection-menu",
+          "names": ["SelectionMenu"],
+          "applicationDefaults": {
+            "default": { "enabled": false, "conditions": [] },
+            "enable": { "enabled": true, "conditions": [] }
+          },
+          "defaultStyle": "THICK",
+          "entries": ["MaterialState.ENABLE"],
+          "effectScopes": ["all-page"],
+          "constraints": ["system-managed-default"]
+        },
+        {
+          "id": "text-selection-menu",
+          "names": ["Text.copyOption selection menu"],
+          "applicationDefaults": {
+            "default": { "enabled": true, "conditions": ["Text.copyOption-enabled"] },
+            "enable": { "enabled": true, "conditions": ["Text.copyOption-enabled"] }
+          },
+          "defaultStyle": "THICK",
+          "entries": ["Text.copyOption"],
+          "effectScopes": ["all-page"],
+          "constraints": ["system-managed-default"]
+        }
+      ]
+    },
+    {
+      "id": "controls",
+      "document": "components/controls.md",
+      "components": [
+        {
+          "id": "button",
+          "names": ["Button"],
+          "applicationDefaults": {
+            "default": { "enabled": false, "conditions": [] },
+            "enable": { "enabled": false, "conditions": [] }
+          },
+          "defaultStyle": null,
+          "entries": ["systemMaterial"],
+          "effectScopes": ["navigation-title", "bottom-floating-tabbar"],
+          "constraints": ["lightEffect-replaces-press-hover-feedback", "invertible-system-colors-only"]
+        },
+        {
+          "id": "select",
+          "names": ["Select"],
+          "applicationDefaults": {
+            "default": { "enabled": false, "conditions": [] },
+            "enable": { "enabled": true, "conditions": [] }
+          },
+          "defaultStyle": "ULTRA_THIN+THICK",
+          "entries": ["systemMaterial", "menuSystemMaterial"],
+          "effectScopes": ["all-page"],
+          "constraints": ["button-and-menu-independent"]
+        },
+        {
+          "id": "toggle",
+          "names": ["Toggle"],
+          "applicationDefaults": {
+            "default": { "enabled": false, "conditions": [] },
+            "enable": { "enabled": true, "conditions": [] }
+          },
+          "defaultStyle": "component-preset",
+          "entries": ["systemMaterial"],
+          "effectScopes": ["all-page"],
+          "constraints": ["Checkbox-unsupported", "Switch-options-are-enable-marker", "Button-follows-Button"]
+        },
+        {
+          "id": "slider",
+          "names": ["Slider"],
+          "applicationDefaults": {
+            "default": { "enabled": false, "conditions": [] },
+            "enable": { "enabled": true, "conditions": [] }
+          },
+          "defaultStyle": "component-preset",
+          "entries": ["systemMaterial"],
+          "effectScopes": ["all-page"],
+          "constraints": ["options-are-enable-marker", "undefined-restores-source-style", "blockType-DEFAULT", "style-not-NONE"]
+        },
+        {
+          "id": "chip",
+          "names": ["Chip"],
+          "applicationDefaults": {
+            "default": { "enabled": false, "conditions": [] },
+            "enable": { "enabled": true, "conditions": [] }
+          },
+          "defaultStyle": "ULTRA_THIN",
+          "entries": ["systemMaterial"],
+          "effectScopes": ["navigation-title", "bottom-floating-tabbar"],
+          "constraints": ["invertible-system-colors-only"]
+        },
+        {
+          "id": "chip-group",
+          "names": ["ChipGroup", "ChipGroupV2"],
+          "applicationDefaults": {
+            "default": { "enabled": false, "conditions": [] },
+            "enable": { "enabled": true, "conditions": [] }
+          },
+          "defaultStyle": "ULTRA_THIN",
+          "entries": ["backgroundSystemMaterial", "selectedBackgroundSystemMaterial", "iconBackgroundSystemMaterial"],
+          "effectScopes": ["navigation-title", "bottom-floating-tabbar"],
+          "constraints": ["invertible-system-colors-only"]
+        },
+        {
+          "id": "segment-button",
+          "names": ["SegmentButton", "SegmentButtonV2"],
+          "applicationDefaults": {
+            "default": { "enabled": false, "conditions": [] },
+            "enable": { "enabled": true, "conditions": [] }
+          },
+          "defaultStyle": "THIN",
+          "entries": ["backgroundSystemMaterial"],
+          "effectScopes": ["navigation-title", "bottom-floating-tabbar"],
+          "constraints": ["capsule-multiple-unsupported", "MultiCapsuleSegmentButtonV2-unsupported", "V2-selected-item-drag-enabled"]
+        }
+      ]
+    }
+  ]
+}

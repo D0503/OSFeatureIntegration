@@ -1,0 +1,221 @@
+#!/usr/bin/env node
+
+import { access, readFile } from "node:fs/promises"
+import { dirname, isAbsolute, relative, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
+import { parseCliArgs } from "./lib/project-tools.mjs"
+import { validateSkillStructure } from "./validate-structure.mjs"
+
+function issue(errors, condition, path, message) {
+  if (!condition) errors.push({ path, message })
+}
+
+async function exists(path) {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function localLinks(markdown) {
+  return [...markdown.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)]
+    .map((match) => match[1].trim().split("#")[0])
+    .filter((target) => target && !/^(?:https?:|mailto:)/i.test(target))
+}
+
+async function validateDocumentMap(errors, packageDir, documents, pathPrefix, requiredKeys) {
+  for (const key of requiredKeys) {
+    const document = documents?.[key]
+    issue(errors, typeof document === "string" && document.length > 0, `${pathPrefix}.${key}`, "缺少必需文档")
+  }
+  for (const [key, document] of Object.entries(documents ?? {})) {
+    if (typeof document !== "string" || !document) {
+      errors.push({ path: `${pathPrefix}.${key}`, message: "文档路径必须是非空字符串" })
+      continue
+    }
+    const absolute = resolve(packageDir, document)
+    const rel = relative(packageDir, absolute)
+    issue(errors, rel.length > 0 && !rel.startsWith("..") && !isAbsolute(rel), `${pathPrefix}.${key}`, "文档必须位于能力包目录内")
+    const documentExists = await exists(absolute)
+    issue(errors, documentExists, `${pathPrefix}.${key}`, "文档不存在")
+    if (!documentExists || !document.endsWith(".md")) continue
+    const markdown = await readFile(absolute, "utf8")
+    for (const target of localLinks(markdown)) {
+      issue(errors, await exists(resolve(dirname(absolute), target)), `${document} -> ${target}`, "相对链接目标不存在")
+    }
+  }
+}
+
+try {
+  const args = parseCliArgs(process.argv.slice(2), ["feature"])
+  if (!args.feature) throw new Error("Required option: --feature <id>")
+  const skillRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
+  const errors = []
+  const structure = await validateSkillStructure(skillRoot)
+  errors.push(...structure.errors)
+
+  const registryPath = resolve(skillRoot, "references", "feature-registry.json")
+  const registry = JSON.parse(await readFile(registryPath, "utf8"))
+  const feature = registry.features.find((item) => item.id === args.feature)
+  issue(errors, Boolean(feature), "registry", `未注册能力: ${args.feature}`)
+
+  if (feature) {
+    const entryPath = resolve(skillRoot, feature.entry)
+    const profilePath = resolve(skillRoot, feature.profile)
+    const packageDir = dirname(profilePath)
+    let profile = null
+    let entry = ""
+    try {
+      profile = JSON.parse(await readFile(profilePath, "utf8"))
+    } catch (error) {
+      errors.push({ path: feature.profile, message: error instanceof Error ? error.message : String(error) })
+    }
+    try {
+      entry = await readFile(entryPath, "utf8")
+    } catch (error) {
+      errors.push({ path: feature.entry, message: error instanceof Error ? error.message : String(error) })
+    }
+
+    if (profile) {
+      issue(errors, profile.schemaVersion === "1.0", "profile.schemaVersion", "schemaVersion 必须是 1.0")
+      issue(errors, profile.featureId === feature.id, "profile.featureId", "featureId 必须与注册表 id 一致")
+      issue(errors, profile.fallbackPolicy?.baseline === "pre-integration-source-state", "profile.fallbackPolicy.baseline", "fallbackPolicy.baseline 必须是 pre-integration-source-state")
+      issue(errors, Array.isArray(profile.fallbackPolicy?.appliesWhen) && profile.fallbackPolicy.appliesWhen.length > 0, "profile.fallbackPolicy.appliesWhen", "fallbackPolicy.appliesWhen 必须是非空数组")
+      issue(errors, Array.isArray(profile.fallbackPolicy?.preserve) && profile.fallbackPolicy.preserve.length > 0, "profile.fallbackPolicy.preserve", "fallbackPolicy.preserve 必须是非空数组")
+      for (const key of ["appliesWhen", "preserve"]) {
+        const values = Array.isArray(profile.fallbackPolicy?.[key]) ? profile.fallbackPolicy[key] : []
+        issue(errors, values.every((value) => typeof value === "string" && value.length > 0), `profile.fallbackPolicy.${key}`, "fallbackPolicy 数组项必须是非空字符串")
+        issue(errors, new Set(values).size === values.length, `profile.fallbackPolicy.${key}`, "fallbackPolicy 数组项不能重复")
+      }
+      issue(errors, Array.isArray(profile.routes) && profile.routes.length > 0, "profile.routes", "routes 必须是非空数组")
+      issue(errors, ["composable", "exclusive"].includes(profile.routeComposition?.mode), "profile.routeComposition.mode", "能力包必须声明 composable 或 exclusive")
+      issue(errors, profile.routeComposition?.selectionField === "selectedRoutes", "profile.routeComposition.selectionField", "组合路线输出字段必须是 selectedRoutes")
+      const routeIds = new Set()
+      for (const [index, route] of (profile.routes ?? []).entries()) {
+        issue(errors, typeof route.id === "string" && route.id.length > 0, `profile.routes[${index}].id`, "route id 不能为空")
+        issue(errors, !routeIds.has(route.id), `profile.routes[${index}].id`, "route id 必须唯一")
+        routeIds.add(route.id)
+        issue(errors, Number.isInteger(route.minApi) && route.minApi > 0, `profile.routes[${index}].minApi`, "minApi 必须是正整数")
+        issue(errors, route.minTargetApi === undefined || (Number.isInteger(route.minTargetApi) && route.minTargetApi > 0), `profile.routes[${index}].minTargetApi`, "minTargetApi 必须是正整数")
+        issue(errors, route.requiresStage === true, `profile.routes[${index}].requiresStage`, "当前能力路线必须要求 Stage 模型")
+        issue(errors, Array.isArray(route.components) && route.components.length > 0, `profile.routes[${index}].components`, "components 必须是非空数组")
+        await validateDocumentMap(errors, packageDir, route.documents, `profile.routes[${index}].documents`, ["implementation", "validation", "assets"])
+      }
+      issue(errors, Array.isArray(profile.routeComposition?.allowed) && profile.routeComposition.allowed.length === routeIds.size, "profile.routeComposition.allowed", "allowed 必须覆盖全部路线")
+      issue(errors, (profile.routeComposition?.allowed ?? []).every((id) => routeIds.has(id)), "profile.routeComposition.allowed", "allowed 包含未知路线")
+      if (feature.id === "immersive-light") {
+        const hds = profile.routes?.find((route) => route.id === "hds")
+        const arkui = profile.routes?.find((route) => route.id === "arkui")
+        issue(errors, hds?.minApi === 23, "profile.routes.hds", "HDS 路线必须从 API 23 开始")
+        issue(errors, hds?.minApiMeaning === "immersive-material-capability", "profile.routes.hds.minApiMeaning", "HDS minApi 必须明确表示沉浸光感材质能力门槛")
+        issue(errors, hds?.componentFamilyMinApi === 18, "profile.routes.hds.componentFamilyMinApi", "HDS 组件家族起点必须与材质路线门槛分开记录为 API 18")
+        const hdsComponentBaselines = new Map((hds?.componentBaselines ?? []).map((item) => [item.component, item.minApi]))
+        issue(errors, hdsComponentBaselines.get("HdsNavigation") === 18, "profile.routes.hds.componentBaselines.HdsNavigation", "HdsNavigation 组件基线必须为 API 18")
+        issue(errors, hdsComponentBaselines.get("HdsNavDestination") === 18, "profile.routes.hds.componentBaselines.HdsNavDestination", "HdsNavDestination 组件基线必须为 API 18")
+        issue(errors, hdsComponentBaselines.get("HdsTabs") === 20, "profile.routes.hds.componentBaselines.HdsTabs", "HdsTabs 组件基线必须为 API 20")
+        issue(errors, arkui?.minApi === 26, "profile.routes.arkui", "ArkUI 路线必须从 API 26 开始")
+        issue(errors, arkui?.minTargetApi === 26, "profile.routes.arkui.minTargetApi", "ArkUI 整条路线必须要求 target API 26")
+        issue(errors, arkui?.minApiMeaning === "immersive-material-capability", "profile.routes.arkui.minApiMeaning", "ArkUI minApi 必须明确表示沉浸光感材质能力门槛")
+        issue(errors, arkui?.applicationLevel?.minTargetApi === 26, "profile.routes.arkui.applicationLevel", "应用级开关必须要求 target API 26")
+        issue(errors, arkui?.applicationLevel?.moduleTypes?.includes("entry"), "profile.routes.arkui.applicationLevel", "应用级开关必须限定 entry module")
+        for (const key of ["activation", "commonMaterial", "componentProfile", "navigation", "overlays", "controls"]) {
+          issue(errors, typeof arkui?.documents?.[key] === "string", `profile.routes.arkui.documents.${key}`, "ArkUI 路线缺少分类资料")
+        }
+
+        let componentProfile = null
+        const componentProfilePath = resolve(packageDir, arkui?.documents?.componentProfile ?? "")
+        try {
+          componentProfile = JSON.parse(await readFile(componentProfilePath, "utf8"))
+        } catch (error) {
+          errors.push({ path: "profile.routes.arkui.documents.componentProfile", message: error instanceof Error ? error.message : String(error) })
+        }
+        if (componentProfile) {
+          issue(errors, componentProfile.schemaVersion === "1.1", "componentProfile.schemaVersion", "组件矩阵 schemaVersion 必须为 1.1")
+          issue(errors, componentProfile.featureId === feature.id, "componentProfile.featureId", "组件矩阵 featureId 不一致")
+          issue(errors, componentProfile.routeId === "arkui", "componentProfile.routeId", "组件矩阵 routeId 必须为 arkui")
+          issue(errors, componentProfile.minTargetApi === 26, "componentProfile.minTargetApi", "组件矩阵必须要求 target API 26")
+          issue(errors, componentProfile.activation?.explicitDisable === "uiMaterial.Material.empty", "componentProfile.activation.explicitDisable", "组件矩阵必须声明明确关闭方式")
+          const effectScopes = new Set(componentProfile.effectScopeValues ?? [])
+          issue(errors, ["all-page", "navigation-title", "bottom-floating-tabbar"].every((scope) => effectScopes.has(scope)), "componentProfile.effectScopeValues", "组件矩阵缺少标准生效域")
+          issue(errors, Array.isArray(componentProfile.groups) && componentProfile.groups.length === 3, "componentProfile.groups", "组件矩阵必须包含三类组件")
+          const componentIds = new Set()
+          for (const [groupIndex, group] of (componentProfile.groups ?? []).entries()) {
+            issue(errors, ["navigation", "overlays", "controls"].includes(group.id), `componentProfile.groups[${groupIndex}].id`, "组件分组 id 非法")
+            issue(errors, typeof group.document === "string" && await exists(resolve(dirname(componentProfilePath), group.document)), `componentProfile.groups[${groupIndex}].document`, "组件分组文档不存在")
+            issue(errors, Array.isArray(group.components) && group.components.length > 0, `componentProfile.groups[${groupIndex}].components`, "组件分组不能为空")
+            for (const [componentIndex, component] of (group.components ?? []).entries()) {
+              issue(errors, typeof component.id === "string" && component.id.length > 0 && !componentIds.has(component.id), `componentProfile.groups[${groupIndex}].components[${componentIndex}].id`, "组件 id 必须是唯一非空字符串")
+              componentIds.add(component.id)
+              issue(errors, Array.isArray(component.names) && component.names.length > 0, `componentProfile.groups[${groupIndex}].components[${componentIndex}].names`, "组件名称不能为空")
+              for (const state of ["default", "enable"]) {
+                const stateDefault = component.applicationDefaults?.[state]
+                issue(errors, typeof stateDefault?.enabled === "boolean", `componentProfile.groups[${groupIndex}].components[${componentIndex}].applicationDefaults.${state}.enabled`, "必须声明状态默认行为")
+                issue(errors, Array.isArray(stateDefault?.conditions) && stateDefault.conditions.every((condition) => typeof condition === "string" && condition.length > 0), `componentProfile.groups[${groupIndex}].components[${componentIndex}].applicationDefaults.${state}.conditions`, "状态条件必须是字符串数组")
+              }
+              issue(errors, Array.isArray(component.entries) && component.entries.length > 0, `componentProfile.groups[${groupIndex}].components[${componentIndex}].entries`, "组件入口不能为空")
+              issue(errors, Array.isArray(component.effectScopes) && component.effectScopes.length > 0 && component.effectScopes.every((scope) => effectScopes.has(scope)), `componentProfile.groups[${groupIndex}].components[${componentIndex}].effectScopes`, "组件必须声明合法生效域")
+            }
+          }
+          for (const requiredId of ["navigation-title", "tabs-bottom-bar", "alphabet-indexer", "toast", "popup", "tips", "menu", "dialog-sheet", "selection-menu", "text-selection-menu", "button", "select", "toggle", "slider", "chip", "chip-group", "segment-button"]) {
+            issue(errors, componentIds.has(requiredId), `componentProfile.components.${requiredId}`, "组件矩阵缺少必需组件")
+          }
+        }
+
+      }
+      if (feature.id === "easygo-parallel") {
+        issue(errors, profile.routeComposition?.mode === "exclusive", "profile.routeComposition.mode", "平行视界路线必须互斥")
+        issue(errors, profile.targetSdkPolicy === "preserve-unless-declared", "profile.targetSdkPolicy", "不得推断平行视界的 target 门槛")
+        issue(errors, routeIds.size === 2 && routeIds.has("router") && routeIds.has("navigation"), "profile.routes", "需覆盖 Router 与 Navigation")
+        for (const route of profile.routes ?? []) {
+          issue(errors, route.minApi === 23 && route.moduleTypes?.length === 1 && route.moduleTypes[0] === "entry", `profile.routes.${route.id}`, "基础配置 API 23 且仅支持 entry")
+        }
+        for (const key of ["isEasySplit", "wideSplit", "squareSplit", "mode", "pagePairs", "transPages", "splitDividerColor", "drawableRectHook", "enableInSplitScreen"]) {
+          issue(errors, profile.capabilities?.[key]?.minApi === (key === "isEasySplit" ? 24 : 26), `profile.capabilities.${key}`, "缺少或错误的可选能力版本门槛")
+        }
+      }
+      if (feature.id === "smart-reach") {
+        issue(errors, profile.routeComposition?.mode === "composable", "profile.routeComposition.mode", "智感握姿支持按不同目标组合路线")
+        issue(errors, profile.targetSdkPolicy === "preserve-unless-declared", "profile.targetSdkPolicy", "智感握姿不推断独立 target 门槛")
+        const expected = { "native-component": 23, "operating-hand": 15, "holding-hand": 20 }
+        issue(errors, routeIds.size === 3 && Object.keys(expected).every((id) => routeIds.has(id)), "profile.routes", "智感握姿必须包含三条路径")
+        for (const route of profile.routes ?? []) {
+          issue(errors, route.minApi === expected[route.id], `profile.routes.${route.id}.minApi`, "智感握姿路径版本门槛错误")
+          issue(errors, route.minTargetApi === undefined, `profile.routes.${route.id}.minTargetApi`, "没有独立 target 门槛证据")
+        }
+        issue(errors, typeof profile.documents?.troubleshooting === "string", "profile.documents.troubleshooting", "缺少智感握姿排障资料")
+      }
+      issue(errors, profile.evidence?.policy === "snapshot-first-verify-on-change-or-conflict", "profile.evidence.policy", "证据策略不符合契约")
+
+      await validateDocumentMap(
+        errors,
+        packageDir,
+        profile.documents,
+        "profile.documents",
+        ["entry", "compatibility", "implementation", "validation", "assets", "fallback", "sharedValidation"]
+      )
+    }
+
+    if (entry) {
+      for (const expected of ["compatibility.md", "implementation.md", "performance-validation.md", "assets-catalog.md", "profile.json"]) {
+        issue(errors, entry.includes(expected), feature.entry, `入口未路由到 ${expected}`)
+      }
+      for (const target of localLinks(entry)) {
+        issue(errors, await exists(resolve(dirname(entryPath), target)), `${feature.entry} -> ${target}`, "相对链接目标不存在")
+      }
+    }
+  }
+
+  const contractPath = resolve(skillRoot, "references", "feature-package-contract.md")
+  const contract = await readFile(contractPath, "utf8")
+  for (const required of ["profile.json", "兼容", "权限", "设备", "降级", "验证", "故障排查", "证据", "pre-integration-source-state"]) {
+    issue(errors, contract.includes(required), "references/feature-package-contract.md", `能力包契约缺少栏目: ${required}`)
+  }
+
+  process.stdout.write(`${JSON.stringify({ status: errors.length ? "invalid" : "valid", feature: args.feature, errors }, null, 2)}\n`)
+  process.exit(errors.length ? 1 : 0)
+} catch (error) {
+  process.stdout.write(`${JSON.stringify({ status: "error", error: error instanceof Error ? error.message : String(error) }, null, 2)}\n`)
+  process.exit(2)
+}

@@ -1,0 +1,215 @@
+{
+  "schemaVersion": "1.0",
+  "featureId": "immersive-light",
+  "routeComposition": {
+    "mode": "composable",
+    "selectionField": "selectedRoutes",
+    "allowed": [
+      "hds",
+      "arkui"
+    ]
+  },
+  "displayName": "沉浸光感",
+  "fallbackPolicy": {
+    "baseline": "pre-integration-source-state",
+    "appliesWhen": [
+      "runtime-version-unsupported",
+      "device-capability-unsupported",
+      "feature-disabled",
+      "permission-or-external-condition-unmet"
+    ],
+    "preserve": [
+      "component-tree-or-existing-code-path",
+      "responsive-layout-orientation-and-window-mode",
+      "state-data-controllers-events-and-lifecycle",
+      "existing-error-denial-and-unavailable-behavior",
+      "ordinary-visual-style"
+    ]
+  },
+  "routes": [
+    {
+      "id": "hds",
+      "minApi": 23,
+      "minApiMeaning": "immersive-material-capability",
+      "maxApi": null,
+      "requiresStage": true,
+      "componentFamilyMinApi": 18,
+      "componentBaselines": [
+        {
+          "component": "HdsNavigation",
+          "minApi": 18
+        },
+        {
+          "component": "HdsNavDestination",
+          "minApi": 18
+        },
+        {
+          "component": "HdsTabs",
+          "minApi": 20
+        }
+      ],
+      "components": [
+        "HdsNavigation",
+        "HdsNavDestination",
+        "HdsTabs"
+      ],
+      "applicationLevel": null,
+      "documents": {
+        "implementation": "routes/hds/implementation.md",
+        "validation": "routes/hds/validation.md",
+        "assets": "routes/hds/assets.md"
+      }
+    },
+    {
+      "id": "arkui",
+      "minApi": 26,
+      "minTargetApi": 26,
+      "minApiMeaning": "immersive-material-capability",
+      "maxApi": null,
+      "requiresStage": true,
+      "components": [
+        "universal-component",
+        "Navigation",
+        "NavDestination",
+        "Tabs",
+        "AlphabetIndexer",
+        "toast",
+        "popup",
+        "tips",
+        "sheet",
+        "menu",
+        "dialog",
+        "CalendarPickerDialog",
+        "DatePickerDialog",
+        "TextPickerDialog",
+        "TimePickerDialog",
+        "Button",
+        "Select",
+        "Toggle",
+        "Slider",
+        "ChipGroup",
+        "ChipGroupV2",
+        "SegmentButton",
+        "SegmentButtonV2",
+        "Chip",
+        "SelectionMenu",
+        "Text.copyOption selection menu"
+      ],
+      "applicationLevel": {
+        "minTargetApi": 26,
+        "moduleTypes": [
+          "entry"
+        ]
+      },
+      "documents": {
+        "implementation": "routes/arkui/implementation.md",
+        "activation": "routes/arkui/activation.md",
+        "commonMaterial": "routes/arkui/common-material.md",
+        "componentProfile": "routes/arkui/component-profile.json",
+        "navigation": "routes/arkui/components/navigation.md",
+        "overlays": "routes/arkui/components/overlays.md",
+        "controls": "routes/arkui/components/controls.md",
+        "validation": "routes/arkui/validation.md",
+        "assets": "routes/arkui/assets.md"
+      }
+    }
+  ],
+  "constraints": [
+    {
+      "id": "web-same-layer-api23",
+      "route": "hds",
+      "maxApi": 23,
+      "scenario": "web-same-layer",
+      "action": "disable-material-or-same-layer"
+    },
+    {
+      "id": "runtime-support",
+      "route": "arkui",
+      "minApi": 26,
+      "scenario": "all",
+      "action": "check-isImmersiveMaterialSupported"
+    },
+    {
+      "id": "fallback-style",
+      "route": "all",
+      "minApi": 23,
+      "scenario": "all",
+      "action": "preserve-standard-background-border"
+    },
+    {
+      "id": "fallback-source-experience",
+      "route": "all",
+      "minApi": 23,
+      "scenario": "lower-version",
+      "action": "preserve-source-layout-breakpoints-orientation-and-interactions"
+    },
+    {
+      "id": "mini-bar-layout-mode-api24",
+      "route": "hds",
+      "minApi": 24,
+      "scenario": "mini-bar-layout-mode",
+      "action": "guard-with-sdk-api-version-or-omit"
+    },
+    {
+      "id": "floating-bar-bottom-spacing-single-owner",
+      "route": "all",
+      "minApi": 23,
+      "scenario": "floating-tab-bottom-spacing",
+      "action": "review-padding-purpose-and-branch-ownership-preserve-normal-tab-navigation-avoidance-without-shrinking-floating-content"
+    },
+    {
+      "id": "floating-tabs-window-immersion",
+      "route": "all",
+      "minApi": 23,
+      "scenario": "floating-tab-bottom-spacing",
+      "action": "verify-window-immersion-call-chain-use-explicit-margin-28-if-enabled-else-0-and-expand-all-first-level-tab-scroll-ancestor-chains"
+    },
+    {
+      "id": "floating-tabs-width-and-breakpoints",
+      "route": "all",
+      "minApi": 23,
+      "scenario": "floating-tabs-layout",
+      "action": "remove-outer-barWidth-use-floating-style-width-and-bottom-horizontal-tabs-at-all-breakpoints-preserve-original-layout-only-in-legacy-api-branch"
+    },
+    {
+      "id": "scrollable-tab-tail-clearance",
+      "route": "all",
+      "minApi": 23,
+      "scenario": "floating-tabs-scrollable-content",
+      "action": "keep-every-scrollable-tab-last-actionable-item-scrollable-above-the-floating-bar-without-changing-non-floating-source-paths"
+    },
+    {
+      "id": "arkui-target-api26",
+      "route": "arkui",
+      "minApi": 26,
+      "scenario": "all",
+      "action": "require-target-sdk-version-26"
+    },
+    {
+      "id": "arkui-native-tabs-contract",
+      "route": "arkui",
+      "minApi": 26,
+      "scenario": "native-tabs-floating-material",
+      "action": "require-bar-overlap-vertical-false-and-bottom-position"
+    },
+    {
+      "id": "arkui-explicit-disable",
+      "route": "arkui",
+      "minApi": 26,
+      "scenario": "component-opt-out",
+      "action": "use-material-empty-unless-component-documents-an-exception"
+    }
+  ],
+  "documents": {
+    "entry": "README.md",
+    "compatibility": "compatibility.md",
+    "implementation": "implementation.md",
+    "validation": "performance-validation.md",
+    "assets": "assets-catalog.md",
+    "fallback": "shared/fallback.md",
+    "sharedValidation": "shared/validation.md"
+  },
+  "evidence": {
+    "policy": "snapshot-first-verify-on-change-or-conflict"
+  }
+}
