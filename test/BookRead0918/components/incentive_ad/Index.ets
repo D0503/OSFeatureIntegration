@@ -1,1 +1,0 @@
-export {IncentiveAdvertising} from './src/main/ets/components/IncentiveAdvertising'
