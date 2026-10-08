@@ -1,0 +1,23 @@
+{
+  "module": {
+    "name": "business_home",
+    "type": "har",
+    "routerMap": "$profile:route_map",
+    "deviceTypes": [
+      "phone",
+      "tablet"
+    ],
+    "requestPermissions": [
+      {
+        "name": "ohos.permission.DETECT_GESTURE",
+        "reason": "$string:gesture_reason",
+        "usedScene": {
+          "abilities": [
+            "PhoneAbility"
+          ],
+          "when": "inuse"
+        }
+      }
+    ]
+  }
+}

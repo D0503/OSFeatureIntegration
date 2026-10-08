@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "page_show",
+      "value": "page from package"
+    },
+    {
+      "name": "agcit_huawei_comprehensive_news",
+      "value": "1.0.6"
+    },
+    {
+      "name": "gesture_reason",
+      "value": "用于感知握持手，使发表悬浮按钮随左右手调整位置"
+    }
+  ]
+}
