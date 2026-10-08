@@ -1,0 +1,16 @@
+{
+  "common": {
+    "displayModeOptions": {
+      "wideWindowMode": "navigationSplit",
+      "squareWindowMode": "navigationSplit",
+      "navigationSplitOptions": {
+        "fullScreenPages": ["SafePage", "SplashPage"],
+        "homePage": "MainEntry",
+        "relatedPage": "ProductInfoPage",
+        "mode": 0,
+        "enableReducedContainerSize": true,
+        "drawableRectHook": true
+      }
+    }
+  }
+}
