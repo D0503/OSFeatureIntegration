@@ -42,13 +42,13 @@ struct MainEntry {
       .height($r('app.string.size_percent_full'))
       .animationDuration(0)
       .barHeight(56)
-      // .barFloatingStyle({
-      //   adaptToHandedness: true,
-      //   systemMaterialEffect: {
-      //     materialType: hdsMaterial.MaterialType.ADAPTIVE,
-      //     materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
-      //   }
-      // })
+      .barFloatingStyle({
+        adaptToHandedness: true,
+        systemMaterialEffect: {
+          materialType: hdsMaterial.MaterialType.ADAPTIVE,
+          materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+        }
+      })
       .onChange((index: number) => {
         this.vm.curIndex = index;
       })

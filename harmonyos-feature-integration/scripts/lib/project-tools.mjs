@@ -3,6 +3,7 @@ import { isAbsolute, relative, resolve } from "node:path"
 
 import { inspectEasyGo, evaluateEasyGo, verifyEasyGo } from "./easygo-tools.mjs"
 import { inspectSmartReach, evaluateSmartReach, verifySmartReach } from "./smart-reach-tools.mjs"
+import { inspectAgentFramework, evaluateAgentFramework, verifyAgentFramework } from "./agent-framework-tools.mjs"
 import { inspectMaterialInventory } from "./material-inventory.mjs"
 
 const SKIP_DIRECTORIES = new Set([".git", ".idea", ".hvigor", "build", "node_modules", "oh_modules"])
@@ -509,6 +510,7 @@ export async function inspectProject(projectPath, options = {}) {
     signals,
     easyGo: inspectEasyGo(files, maskComments),
     smartReach: inspectSmartReach(files, maskComments),
+    agentFramework: inspectAgentFramework(files, maskComments),
     materialInventory: await inspectMaterialInventory(files, maskComments),
     evidence: [compatible.evidence, target.evidence, compile.evidence, ...localSdk.evidence].filter(Boolean),
     unknown,
@@ -520,6 +522,7 @@ export async function inspectProject(projectPath, options = {}) {
 }
 
 export function evaluateCompatibility(inspection, profile) {
+  if (profile.featureId === "agent-framework-kit") return evaluateAgentFramework(inspection, profile)
   if (profile.featureId === "smart-reach") return evaluateSmartReach(inspection, profile)
   if (profile.featureId === "easygo-parallel") return evaluateEasyGo(inspection, profile)
   const compatible = Number.isInteger(inspection.api.compatible) ? inspection.api.compatible : null
@@ -612,7 +615,7 @@ export function evaluateCompatibility(inspection, profile) {
         upgradeCompileApi: route.minApi,
         upgradeLocalSdkApi: sdkAvailable ? null : route.minApi,
         sdkStatus: sdkRoute?.status ?? "not_checked",
-        note: `Ensure the local SDK API and compileSdkVersion reach ${route.minApi}, targetSdkVersion reaches ${requiredTargetApi}, keep compatibleSdkVersion at ${compatible}, protect lower devices at runtime, and preserve the pre-integration source state on every fallback path${route.minApi === 26 || requiredTargetApi === 26 ? '. When writing API 26 to build-profile.json5, use the string "26.0.0" without a parenthesized suffix; preserve the existing compatibleSdkVersion value and format' : ''}`
+        note: `Install or select a local SDK with API ${route.minApi} or later and ensure the effective compile API reaches ${route.minApi}; no explicit compileSdkVersion is required (if already configured below the requirement, adjust that existing value), targetSdkVersion reaches ${requiredTargetApi}, keep compatibleSdkVersion at ${compatible}, protect lower devices at runtime, and preserve the pre-integration source state on every fallback path. Before writing targetSdkVersion, verify its accepted type, format and version mapping against the target SDK and matching build-tool configuration schema, official template or official configuration documentation. API levels and SDK package versions are not configuration values by themselves; do not invent or extrapolate a version string. Preserve the existing compatibleSdkVersion value and format`
       })
     }
   }
@@ -624,7 +627,7 @@ export function evaluateCompatibility(inspection, profile) {
       upgradeOptions,
       decisionRequired: true,
       missingConditions: [
-        `No route is currently supported by both the project configuration and the verified local SDK API; install or select the required SDK version and upgrade compileSdkVersion/targetSdkVersion as needed while keeping compatibleSdkVersion for lower devices`
+        `No route is currently supported by both the project configuration and the verified local SDK API; install or select the required SDK version without adding an explicit compileSdkVersion, adjust an existing compile setting only if below the requirement, and upgrade targetSdkVersion as needed while keeping compatibleSdkVersion for lower devices`
       ],
       fallbackRequirements: [
         "runtime-version-guard",
@@ -709,6 +712,7 @@ function effectiveArkuiMaterialState(inspection) {
 }
 
 export function verifyInspection(inspection, compatibility, routeOption = "auto") {
+  if (compatibility.featureId === "agent-framework-kit") return verifyAgentFramework(inspection, compatibility, routeOption)
   if (compatibility.featureId === "smart-reach") return verifySmartReach(inspection, compatibility, routeOption)
   if (compatibility.featureId === "easygo-parallel") return verifyEasyGo(inspection, compatibility, routeOption)
   if (routeOption === "auto" && (compatibility.selectedRoutes?.length ?? 0) > 1) {
