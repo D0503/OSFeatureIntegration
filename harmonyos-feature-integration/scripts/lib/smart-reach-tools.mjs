@@ -70,12 +70,13 @@ export function evaluateSmartReach(inspection, profile) {
   if (inspection.model !== "stage") { base.status = inspection.model === "fa" ? "unsupported" : "insufficient_context"; base.missingConditions.push("需要 Stage 工程"); return base }
   const modules = inspection.smartReach?.records ?? []
   if (!modules.some((m) => ["entry", "feature"].includes(m.moduleType))) { base.missingConditions.push("未识别 src/main 下的 entry/feature 模块；库代码需定位最终承载 HAP"); return base }
-  if (![inspection.api.compile, inspection.api.compatible].every(Number.isInteger)) { base.missingConditions.push("工程 compile/compatible API 无法确定"); return base }
+  if (![inspection.api.compile, inspection.api.target, inspection.api.compatible].every(Number.isInteger)) { base.missingConditions.push("工程 compile/target/compatible API 无法确定"); return base }
   for (const r of profile.routes) {
+    const requiredTargetApi = Math.max(r.minApi, r.minTargetApi ?? 0)
     const apiSatisfied = sdk.apiVersion >= r.minApi
     base.sdk.routes[r.id] = { status: apiSatisfied ? "supported" : "sdk_too_old", minApi: r.minApi, apiSatisfied }
-    if (apiSatisfied && inspection.api.compile >= r.minApi) base.availableRoutes.push(r.id)
-    else base.upgradeOptions.push({ route: r.id, upgradeLocalSdkApi: apiSatisfied ? null : r.minApi, upgradeCompileApi: r.minApi, upgradeTargetApi: null, keepCompatibleApi: inspection.api.compatible, note: `安装或切换本机 SDK，使有效 compile 至少 API ${r.minApi}；无需显式配置 compileSdkVersion，已有配置低于门槛时调整既有值；保留 target/compatible。低版本只运行原程序路径，不以其他感知替代所选能力。` })
+    if (apiSatisfied && inspection.api.compile >= r.minApi && inspection.api.target >= requiredTargetApi) base.availableRoutes.push(r.id)
+    else base.upgradeOptions.push({ route: r.id, upgradeLocalSdkApi: apiSatisfied ? null : r.minApi, upgradeCompileApi: r.minApi, upgradeTargetApi: Math.max(inspection.api.target, requiredTargetApi), keepCompatibleApi: inspection.api.compatible, note: `安装或切换本机 SDK，使有效 compile 至少 API ${r.minApi}；无需显式配置 compileSdkVersion，已有配置低于门槛时调整既有值；target 至少 API ${requiredTargetApi}，已有更高版本不降低；保留 compatible，升级须用户确认。低版本只运行原程序路径，不以其他感知替代所选能力。` })
   }
   const usages = inspection.smartReach?.usages ?? []
   base.selectedRoutes = base.availableRoutes.filter((id) => usages.some((u) => u.route === id && u.operation !== "off" && u.enabled !== false))
@@ -129,6 +130,7 @@ export function verifySmartReach(inspection, compatibility, routeOption = "auto"
           check(`permission-fields-${owner}-${permission.name}`, reasonValid && sceneValid ? "pass" : "fail", `${permission.name} 的 user_grant 声明必须包含 reason 字符串资源引用及 usedScene.abilities/when`, [{ path: owner }])
           if (reasonValid && sceneValid) check(`permission-resources-${owner}-${permission.name}`, "warn", "核对 reason 资源可解析且用途准确，usedScene.abilities 属于实际使用能力的模块 Ability，页面可见期感知使用 inuse", [{ path: owner }])
         }
+        if (route === "operating-hand" && activity) check(`authorization-${owner}`, "warn", "操作手若使用 ACTIVITY_MOTION，调用前须经 requestPermissionsFromUser 获得授权；静态检查不能证明授权结果与 motion 调用顺序，需复核拒绝、异常及页面离开路径", ev)
         if (route === "operating-hand" && gesture && !activity && inspection.api.compatible < 20) check(`permission-api-${owner}`, "warn", "仅 DETECT_GESTURE 无法覆盖 API 15–19；补充 ACTIVITY_MOTION 声明或将操作手增强限制到 API 20+", ev)
       }
       for (const u of active.filter((u) => u.operation === "on")) {

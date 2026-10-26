@@ -32,10 +32,10 @@ assert.doesNotMatch(JSON.stringify(verify(base).checks.map((c) => c.id)), /hds-m
 
 for (const [api, expected] of [[14, []], [15, ["operating-hand"]], [19, ["operating-hand"]], [20, ["operating-hand", "holding-hand"]], [22, ["operating-hand", "holding-hand"]], [23, ["native-component", "operating-hand", "holding-hand"]]]) {
   for (const limiting of ["sdk", "compile", "both"]) {
-    const i = mutate((v) => { if (limiting !== "compile") v.localSdk.apiVersion = api; if (limiting !== "sdk") v.api.compile = api; v.api.target = 14 })
+    const i = mutate((v) => { if (limiting !== "compile") v.localSdk.apiVersion = api; if (limiting !== "sdk") v.api.compile = api; v.api.target = 23 })
     assert.deepEqual(compat(i).availableRoutes, expected)
     assert.equal(compat(i).status, expected.length ? "conditional" : "upgrade_available")
-    assert.ok(compat(i).upgradeOptions.every((o) => o.upgradeTargetApi === null && o.keepCompatibleApi === 14))
+    assert.ok(compat(i).upgradeOptions.every((o) => o.upgradeTargetApi === 23 && o.keepCompatibleApi === 14))
   }
 }
 assert.equal(compat(mutate((i) => { i.localSdk.status = "missing" })).status, "insufficient_context")
@@ -73,7 +73,7 @@ assert.ok(has(verify(inspected), "permission-api-", "warn"), "Gesture alone does
 await writeFile(manifest, `{module:{name:'entry',type:'entry',requestPermissions:[{name:'ohos.permission.ACTIVITY_MOTION',reason:'$string:gesture_reason',usedScene:{abilities:['EntryAbility'],when:'inuse'}}]}}`)
 inspected = await scan()
 assert.ok(has(verify(inspected), "permission-", "pass"))
-assert.ok(!has(verify(inspected), "authorization", "warn"))
+assert.ok(has(verify(inspected), "authorization", "warn"))
 assert.ok(!has(verify(inspected), "permission-api-", "warn"))
 assert.ok(has(verify(inspected), "permission-fields-", "pass"))
 for (const route of ["operating-hand", "holding-hand"]) {
@@ -92,6 +92,12 @@ for (const route of ["operating-hand", "holding-hand"]) {
     assert.ok(has(verify(invalid, route), "permission-fields-", "fail"))
   }
 }
+const declarationOnly = mutate((i) => {
+  i.smartReach.records[0].permissions = ["ohos.permission.DETECT_GESTURE"]
+  i.smartReach.records[0].permissionDeclarations = [{ name: "ohos.permission.DETECT_GESTURE" }]
+})
+assert.ok(has(verify(declarationOnly, "holding-hand"), "permission-fields-", "fail"))
+assert.ok(!has(verify(declarationOnly, "holding-hand"), "authorization", "warn"))
 
 await writeFile(page, `import motion from '@ohos.multimodalAwareness.motion'; motion.getRecentOperatingHandStatus();`)
 inspected = await scan()

@@ -12,17 +12,26 @@
 
 本包支持 Stage 普通应用的 entry/feature HAP 接入；库代码定位到最终 HAP 配置权限。元服务、其他模型或未列出的设备支持待确认。
 
-先验证本机 `sdk-pkg.json`，再检查 compile/compatible。三条路线没有已确认的独立 target 门槛，采用 `targetSdkPolicy: preserve-unless-declared`；示例 target/compatible 23 不是所有路线必须升级到 23 的要求。SDK/compile 过低时提供对应路线的升级选项，保留原 target/compatible。compatible 低于所选路线时，保护整个新调用路径。
+先验证本机 sdk-pkg.json，再检查 compile/target/compatible。版本升级遵循[通用兼容性规则](../../shared/compatibility-model.md#升级接入对所有特性通用)。三条路线分别按实际使用要求判定，不统一套用示例的 API 23。compatible 低于所选路线时保护整个新调用路径。
 
 操作手与握持手路线须在实际承载功能的 HAP 模块 `src/main/module.json5` 的 `module.requestPermissions` 中声明对应权限。API 15–19 不因声明 DETECT_GESTURE 就获得操作手权限；若仅使用该权限，增强分支需限定 API 20+，更低系统继续原路径。
 
-`DETECT_GESTURE` 只需在所属 HAP 声明，无需运行时请求授权；原生组件路线无需声明感知权限。握持手路线的声明示例，合并到模块现有配置：
+`DETECT_GESTURE` 只需在所属 HAP 声明，无需运行时请求授权；声明中填写实际用途的 `reason` 和 `usedScene`。原生组件路线无需声明感知权限。握持手路线的声明示例，合并到模块现有配置：
 
 ```json5
 requestPermissions: [
-  { name: 'ohos.permission.DETECT_GESTURE' }
+  {
+    name: 'ohos.permission.DETECT_GESTURE',
+    reason: '$string:gesture_reason',
+    usedScene: {
+      abilities: ['EntryAbility'],
+      when: 'inuse'
+    }
+  }
 ]
 ```
+
+`gesture_reason` 指向模块内的字符串资源，例如在 `src/main/resources/base/element/string.json` 的现有 `string` 数组中添加 `{ "name": "gesture_reason", "value": "用于感知握持手，使操作按钮随左右手调整位置" }`；`EntryAbility` 替换为实际 Ability。仅声明和配置用途字段，不为此权限调用 `requestPermissionsFromUser`。
 
 操作手覆盖 API 15–19 时声明 `ohos.permission.ACTIVITY_MOTION`；API 20+ 若选择该权限也使用相同规则。它属于 `user_grant`：声明需配置 `reason` 和 `usedScene`，并在访问操作手接口前获得用户授权。`user_grant` 是权限类型，不写入 `requestPermissions` 对象：
 
@@ -50,7 +59,7 @@ requestPermissions: [
 
 `usedScene.abilities` 替换为实际使用感知能力的 Ability 名称，与当前模块声明一致；不能直接照搬示例名称。页面可见期感知使用 `when: 'inuse'`。权限用途文案按实际功能填写，并按工程现有多语言资源维护。
 
-操作手路线如选择 `DETECT_GESTURE`（仅 API 20+），只声明该权限，不执行 `ACTIVITY_MOTION` 的授权流程。多路线组合合并所需权限并去重。
+操作手路线如选择 `DETECT_GESTURE`（仅 API 20+），按上述格式声明该权限，不执行 `ACTIVITY_MOTION` 的授权流程。多路线组合合并所需权限并去重。
 
 ## 设备与环境
 

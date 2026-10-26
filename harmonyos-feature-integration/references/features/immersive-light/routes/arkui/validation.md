@@ -4,6 +4,7 @@
 
 ## ArkUI 矩阵
 
+- 采用搜索框标题栏收缩正例时，验证快速跨越收缩阈值、负向回弹、回顶和字体变化；标题高度与 Builder 一致，透明度在 0～1 内，初始避让不随收缩重复改变，隐藏搜索区域不拦截操作或无障碍焦点；
 - 本机 SDK、compile API、target API 均达到 26；target 低于 26 时路线不可用而不是仅禁用应用级 metadata；
 - `compatibleSdkVersion < 26` 时，验证 `sdkApiVersion >= 26` 的支持与低版本路径；仅材质变化时检查调用和配置保护，组件、布局或导航结构变化时检查组件树分支；
 - `isImmersiveMaterialSupported()` 返回 true/false；
@@ -16,7 +17,9 @@
 - 采用[滚动内容切换到标题栏](components/navigation.md#可选滚动内容切换到标题栏)时，验证同坐标系测量、上滑接替与下滑恢复、临界防抖、隐藏占位及共享选择状态；快速滚动、回弹、窗口和字体变化、返回页面后不出现高度跳变、重复交互或失效测量；
 - 原生 Navigation 标题栏与原生 Tabs；Tabs 同时满足 `barFloatingStyle`、`barOverlap(true)`、`vertical(false)`、`BarPosition.End` 后应呈现系统默认 `THIN`，不强制显式材质；接入分支默认显式 `maskColor: Color.Transparent`，保留非透明遮罩的分支须有设计依据并验证滚动内容可视性；逐页验证所有可滚动 Tab 的末项和操作热区能滚到悬浮栏上方；
 - AlphabetIndexer、Toast、Popup、Tips、Menu、Dialog/Sheet、SelectionMenu 和文本选择菜单的 `DEFAULT`/`ENABLE` 默认状态、Options 类型和背景冲突；
+- `bindSheet` 即使处于应用级 `ENABLE`，也必须检查 `SheetOptions.systemMaterial` 已显式传入有效材质对象；核对 `style` 是否符合目标设计，允许定制厚度，不能把 `undefined` 或 Dialog 的默认材质作为已接入依据；
 - Button、Select、Toggle、Slider、Chip、ChipGroup/ChipGroupV2、SegmentButton/SegmentButtonV2 的专属入口、默认状态、生效域和预设视觉限制；
+- 接入沉浸光感的 Button 必须显式设置 `.backgroundColor(Color.Transparent)`，验证默认蓝色背景未影响材质效果；
 - CalendarPickerDialog、DatePickerDialog、TextPickerDialog、TimePickerDialog 按 CustomDialog 验证；CalendarPicker 自带弹出框仍不支持；
 - MultiCapsuleSegmentButtonV2 不支持沉浸光感，保留原样式；
 - Select 按钮与菜单两个独立入口；

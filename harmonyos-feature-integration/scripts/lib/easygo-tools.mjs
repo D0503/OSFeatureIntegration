@@ -110,7 +110,7 @@ export function inspectEasyGo(files, maskComments) {
   }
 }
 
-const fields26 = ["wideSplit", "squareSplit", "mode", "pagePairs", "transPages", "splitDividerColor", "drawableRectHook", "enableInSplitScreen"]
+const fields26 = ["wideSplit", "squareSplit", "mode", "pagePairs", "transPages", "splitDividerColor", "drawableRectHook", "enableInSplitScreen", "disableSplitByDefault"]
 export function easyGoRequiredApi(inspection, profile) {
   let api = Math.min(...profile.routes.map((r) => r.minApi))
   if (inspection.easyGo?.stateQueries?.length) api = Math.max(api, profile.capabilities.isEasySplit.minApi)
@@ -140,10 +140,10 @@ export function evaluateEasyGo(inspection, profile) {
   if (!sdkValid) { base.missingConditions.push("本机 SDK 根清单未验证；使用 --sdk 指定 SDK"); return base }
   if (inspection.model !== "stage") { base.status = inspection.model === "fa" ? "unsupported" : "insufficient_context"; base.missingConditions.push("需要 Stage 工程"); return base }
   if (!inspection.modules.some((m) => m.type === "entry")) { base.status = "unsupported"; base.missingConditions.push("easyGo 仅支持 entry 模块"); return base }
-  if (!Number.isInteger(inspection.api.compile) || !Number.isInteger(inspection.api.compatible)) { base.missingConditions.push("工程 compile/compatible API 无法确定"); return base }
-  if (sdk.apiVersion < requiredApi || inspection.api.compile < requiredApi) {
+  if (![inspection.api.compile, inspection.api.target, inspection.api.compatible].every(Number.isInteger)) { base.missingConditions.push("工程 compile/target/compatible API 无法确定"); return base }
+  if (sdk.apiVersion < requiredApi || inspection.api.compile < requiredApi || profile.routes.some((r) => inspection.api.target < Math.max(requiredApi, r.minTargetApi ?? 0))) {
     base.status = "upgrade_available"; base.decisionRequired = true
-    base.upgradeOptions = profile.routes.map((r) => ({ route: r.id, requiredSdkApi: requiredApi, requiredCompileApi: requiredApi, keepCompatibleApi: inspection.api.compatible, note: `所用平行视界配置/API 需要 SDK 与有效 compile API ${requiredApi}；安装或切换 SDK 即可，无需显式配置 compileSdkVersion，已有配置低于门槛时调整既有值；保留 compatible，资料未声明额外 target 门槛，不自动修改 target` }))
+    base.upgradeOptions = profile.routes.map((r) => ({ route: r.id, requiredSdkApi: requiredApi, requiredCompileApi: requiredApi, upgradeTargetApi: Math.max(inspection.api.target, requiredApi, r.minTargetApi ?? 0), keepCompatibleApi: inspection.api.compatible, note: `所用平行视界配置/API 需要 SDK 与有效 compile API ${requiredApi}；按需安装或切换 SDK，无需显式配置 compileSdkVersion，已有配置低于门槛时调整既有值；target 至少 API ${Math.max(requiredApi, r.minTargetApi ?? 0)}，已有更高版本不降低；保留 compatible，升级须用户确认` }))
     base.missingConditions.push(`所用配置或查询接口要求 API ${requiredApi}`)
     return base
   }
@@ -201,7 +201,8 @@ export function verifyEasyGo(inspection, compatibility, routeOption) {
             if (id === "router" && ["homeNavigationId", "disablePlaceholder", "disableDivider"].includes(k)) fail("navigation-only", `${k} 仅支持 Navigation`)
             else warn("unknown-field", `${key}.${k} 不在资料定义中，需核对`)
           }
-          for (const k of ["enableReducedContainerSize", "supportLandscapeFullscreen", "dialogSupportSplit", "drawableRectHook", "enableInSplitScreen", "disablePlaceholder", "disableDivider"]) if (own(o, k) && typeof o[k] !== "boolean") fail("type", `${k} 必须为布尔值`)
+          for (const k of ["enableReducedContainerSize", "supportLandscapeFullscreen", "dialogSupportSplit", "drawableRectHook", "enableInSplitScreen", "disableSplitByDefault", "disablePlaceholder", "disableDivider"]) if (own(o, k) && typeof o[k] !== "boolean") fail("type", `${k} 必须为布尔值`)
+          if (own(o, "disableSplitByDefault")) warn("patch-version", "disableSplitByDefault 需要 API 26.0.1；整数 API 门禁不能验证补丁版本，需核实 SDK/compile 与目标系统支持，并验证手动开关状态优先")
           for (const k of ["homePage", "relatedPage", "homeNavigationId"]) if (own(o, k) && (typeof o[k] !== "string" || !o[k].trim())) fail("type", `${k} 必须为非空字符串`)
           if (own(o, "relatedPage") && !o.homePage) fail("related", "relatedPage 必须同时配置 homePage")
           if (o.relatedPage) warn("related-parameters", "关联页不能接收动态参数，需确认可独立初始化")

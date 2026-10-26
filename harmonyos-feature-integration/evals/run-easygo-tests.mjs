@@ -39,7 +39,7 @@ const options = (i) => i.easyGo.records[0].configs[0].value.common.displayModeOp
 const invalid = (fn, id) => assert.ok(has(verify(mutate(fn)), id, "fail"), id)
 const warn = (fn, id) => assert.ok(has(verify(mutate(fn)), id, "warn"), id)
 assert.equal(compat(mutate((i) => { i.api.compile = 22 })).status, "upgrade_available")
-assert.equal(compat(mutate((i) => { i.api.target = 12 })).status, "conditional", "No undocumented target API requirement")
+assert.equal(compat(mutate((i) => { i.api.target = 12 })).status, "upgrade_available", "Unified integration policy requires target to meet requiredApi")
 assert.equal(compat(mutate((i) => { i.localSdk.status = "invalid" })).status, "insufficient_context")
 assert.equal(compat(mutate((i) => { i.localSdk = null })).status, "insufficient_context")
 assert.equal(compat(mutate((i) => { i.model = "fa" })).status, "unsupported")
@@ -71,7 +71,7 @@ assert.equal(verify(overrides).counts.fail, 0)
 assert.ok(has(verify(overrides), "override", "pass"))
 invalid((i) => { i.easyGo.records[0].configs[0].value.phone = { displayModeOptions: { squareWindowMode: "original" } } }, "window-mode")
 const enhanced = mutate((i) => {
-  i.api.compile = 26; i.localSdk.apiVersion = 26
+  i.api.compile = 26; i.api.target = 26; i.localSdk.apiVersion = 26
   Object.assign(options(i), { mode: 0, transPages: ["pages/Edit"], fullScreenPages: ["pages/Full"], wideSplit: { ratio: "1 | 2" }, splitDividerColor: { light: "#FF000000", dark: "#FFFFFFFF" }, enableInSplitScreen: true })
 })
 assert.equal(verify(enhanced).counts.fail, 0)
@@ -88,12 +88,15 @@ for (const route of ["router", "navigation"]) {
   for (const api of [23, 26]) {
     const name = `${route}-${api === 26 ? "shopping-api26" : "api23"}.json`
     const config = JSON.parse(await readFile(join(root, "references/features/easygo-parallel/assets", name), "utf8"))
+    for (const field of ["wideWindowMode", "squareWindowMode"]) {
+      assert.equal(config.common.displayModeOptions[field], `${route}Split`, `${name}: ${field} defaults to route split`)
+    }
     const o = config.common.displayModeOptions[`${route}SplitOptions`]
     assert.equal(o.enableReducedContainerSize, true, `${name}: new integration default`)
     if (api === 26) assert.equal(o.drawableRectHook, true, `${name}: API 26 default`)
     else assert.equal(Object.hasOwn(o, "drawableRectHook"), false, `${name}: no API 26 field`)
     const i = mutate((i) => {
-      i.api.compile = api; i.localSdk.apiVersion = api
+      i.api.compile = api; i.api.target = api; i.localSdk.apiVersion = api
       i.easyGo.records[0].configs[0].value = config
     }, route === "router" ? router : navigation)
     assert.equal(compat(i).requiredApi, api)
@@ -107,13 +110,34 @@ for (const route of ["router", "navigation"]) {
     if (api === 26) assert.equal(chosen.drawableRectHook, false)
   }
 }
+assert.equal(profile.capabilities.disableSplitByDefault.minApiVersion, "26.0.1")
+for (const route of ["router", "navigation"]) {
+  for (const value of [true, false]) {
+    const i = mutate((i) => {
+      i.api.compile = 23; i.localSdk.apiVersion = 23
+      i.easyGo.records[0].configs[0].value = { common: { displayModeOptions: {
+        wideWindowMode: `${route}Split`, [`${route}SplitOptions`]: { disableSplitByDefault: value }
+      } } }
+    }, route === "router" ? router : navigation)
+    assert.equal(compat(i).requiredApi, 26)
+    assert.equal(compat(i).status, "upgrade_available")
+    i.api.compile = 26; i.api.target = 26; i.localSdk.apiVersion = 26
+    assert.equal(verify(i, route).counts.fail, 0)
+    assert.ok(has(verify(i, route), "patch-version", "warn"), "Integer API 26 does not prove 26.0.1 support")
+    assert.equal(has(verify(i, route), "unknown-field"), false)
+    const o = i.easyGo.records[0].configs[0].value.common.displayModeOptions[`${route}SplitOptions`]
+    assert.equal(o.disableSplitByDefault, value)
+    o.disableSplitByDefault = "false"
+    assert.ok(has(verify(i, route), "type", "fail"))
+  }
+}
 // Isolate drawableRectHook from shopping mode so its version gate is tested independently.
 for (const value of [true, false]) {
   const hook = mutate((i) => { options(i).drawableRectHook = value })
   assert.equal(compat(hook).requiredApi, 26)
   assert.equal(compat(hook).status, "upgrade_available")
   assert.ok(has(verify(hook), "route", "fail"))
-  hook.api.compile = 26; hook.localSdk.apiVersion = 26
+  hook.api.compile = 26; hook.api.target = 26; hook.localSdk.apiVersion = 26
   assert.equal(verify(hook).counts.fail, 0)
   delete options(hook).drawableRectHook
   hook.api.compile = 23; hook.localSdk.apiVersion = 23

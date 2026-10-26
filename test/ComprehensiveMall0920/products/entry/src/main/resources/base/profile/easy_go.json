@@ -9,7 +9,10 @@
         "relatedPage": "ProductInfoPage",
         "mode": 0,
         "enableReducedContainerSize": true,
-        "drawableRectHook": true
+        "drawableRectHook": true,
+        "wideSplit": {
+          "ratio": "1 | 1"
+        }
       }
     }
   }

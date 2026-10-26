@@ -32,6 +32,8 @@
 
 ### 自定义标题高度与内容避让
 
+搜索区域随滚动收缩时，参考[官方场景正例一](title-scroll-examples.md#正例一搜索框标题栏随滚动收缩)，组合内容起始偏移、标题高度、位移、透明度与子组件材质。
+
 按[共享标题栏避让规则](../../../shared/validation.md#标题栏内容避让与自定义标题)检查首项遮挡。需要避让时，优先在真实滚动容器上设置 `contentStartOffset`，也允许随内容滚动的内部顶部占位，两者不重复补偿；不得用滚动容器自身或外层顶部 padding 缩短、下移滚动视口。保持内容上滑时可以滚入标题栏下方。自定义标题同时声明高度，并使 Builder 根容器 `.height(this.titleHeight)` 与之匹配。例如：
 
 ```typescript
@@ -52,6 +54,8 @@ NavDestination() {
 `totalTitleHeight` 是工程确认的初始避让高度，`titleHeight` 是当前标题高度；已有避让时不重复添加。
 
 ### 可选：滚动内容切换到标题栏
+
+对应结构参见[官方场景正例二](title-scroll-examples.md#正例二内容分类栏滚入标题栏后接替显示)，位置判断和共享状态仍遵循本节要求。
 
 仅在用户需要内容标题或分类栏滚入标题栏后接替显示时采用，不作为沉浸光感标题栏的默认行为。内容区与标题栏各保留一个展示位置，以页面共享状态切换；内容区隐藏时使用 `Visibility.Hidden` 保留占位，标题栏使用固定承接容器，避免切换改变测量位置和滚动范围。
 
@@ -86,6 +90,8 @@ private updateTitlePlacement(contentTopVp: number, titleSlotTopVp: number): void
 验证上滑接替、下滑恢复、阈值相等及附近往返、快速滚动与回弹：占位不塌陷、标题高度不跳变、选择状态不丢失、点击和无障碍不重复；同时检查旋转、字体放大和返回页面后的切换位置。示例需结合目标工程的组件参数、布局回调和版本分支接入，不能以静态代码存在代替运行验证。
 
 ## 原生底部 Tabs
+
+组件树只按运行 API 分支：API 26 及以上进入悬浮 Tabs 升级接入分支，低于 26 保留原 Tabs 及其原有设备适配；不以设备类型、断点或材质能力作为升级分支的附加条件。材质不可用或关闭在升级分支内处理。最低兼容版本已达到 26 时无需新增低版本分支。
 
 `Tabs` 及链上的 `TabContent` 本身也要按[共享安全区规则](../../../shared/validation.md#窗口沉浸状态与栏间距)配置 `.expandSafeArea([SafeAreaType.SYSTEM], [...])`，按需选择 BOTTOM、TOP 或一次合并两者，不能只扩展外围容器和内部页面。
 
@@ -172,6 +178,36 @@ Tabs({ barPosition: BarPosition.End }) {
 - 两个背景属性与沉浸光感互斥，主动设置后材质不生效；
 - 高、中算力设备显示 `THICK`，低算力设备降级为普通白色背景；
 - 提示弹窗通过上述背景属性条件控制默认材质，回退时保留普通背景路径。
+
+最小示例（依据[官方示例 4：设置提示弹窗的沉浸光感效果](https://developer.huawei.com/consumer/cn/doc/doccenter-references/api/ts-container-alphabet-indexer#示例4设置提示弹窗的沉浸光感效果)提炼）：
+
+```typescript
+@Component
+struct AlphabetIndexerMaterialExample {
+  private indexLabels: string[] = ['A', 'B'];
+  private popupItems: string[][] = [['安'], ['卜', '白', '包']];
+  @State selectedIndex: number = 0;
+
+  build() {
+    AlphabetIndexer({ arrayValue: this.indexLabels, selected: this.selectedIndex })
+      .usingPopup(true)
+      .alignStyle(IndexerAlign.Left)
+      .onSelect((index: number) => {
+        this.selectedIndex = index;
+      })
+      .onRequestPopupData((index: number): string[] => {
+        return this.popupItems[index] ?? [];
+      })
+      .onPopupSelect((index: number) => {
+        console.info(`Popup item selected: ${index}`);
+      })
+  }
+}
+```
+
+该片段用于满足 [ArkUI 开启策略](../activation.md)的 API 26 接入分支，未在目标工程编译或真机验证。`.usingPopup(true)` 开启提示弹窗；不设置 `popupBackground` 和 `popupBackgroundBlurStyle`，由系统呈现默认 `THICK` 材质，无需额外调用 `.systemMaterial(...)`。已有代码显式配置这两个属性时，仅在接入分支移除配置或传入 `undefined`，回退分支保留原值。
+
+接入时复用工程已有索引数据、选中状态和列表联动：`onSelect` 对应一级索引，`onRequestPopupData` 返回该索引下的二级数据，`onPopupSelect` 的参数是弹窗二级数据中的位置。示例日志应替换为原有业务回调；无需复制官网示例的背景图或列表布局。实际材质效果随设备算力及系统沉浸光感档位调整。
 
 ## 路由判定
 

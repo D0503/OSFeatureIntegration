@@ -4,6 +4,7 @@ import { isAbsolute, relative, resolve } from "node:path"
 import { inspectEasyGo, evaluateEasyGo, verifyEasyGo } from "./easygo-tools.mjs"
 import { inspectSmartReach, evaluateSmartReach, verifySmartReach } from "./smart-reach-tools.mjs"
 import { inspectAgentFramework, evaluateAgentFramework, verifyAgentFramework } from "./agent-framework-tools.mjs"
+import { inspectWindowPrivacy, evaluateWindowPrivacy, verifyWindowPrivacy } from "./window-privacy-tools.mjs"
 import { inspectMaterialInventory } from "./material-inventory.mjs"
 
 const SKIP_DIRECTORIES = new Set([".git", ".idea", ".hvigor", "build", "node_modules", "oh_modules"])
@@ -380,6 +381,7 @@ function inspectModules(files) {
 }
 
 const SIGNALS = [
+  { id: "tabDeviceBranchCandidate", regex: /\b(?:deviceType|isPhone|isTablet|isPad|isLarge|breakpoint|breakPoint|currentBreakpoint)\b/ },
   { id: "outerBarWidth", regex: /\.\s*barWidth\s*\(/ },
   { id: "tabDirectionCandidate", regex: /\bvertical\s*(?:\((?!\s*false\s*\))|:(?!\s*false\b))/ },
   { id: "tabPositionCandidate", regex: /\bbarPosition\s*(?:\((?!\s*BarPosition\.End\s*\))|:(?!\s*BarPosition\.End\s*[,}]))/ },
@@ -511,6 +513,7 @@ export async function inspectProject(projectPath, options = {}) {
     easyGo: inspectEasyGo(files, maskComments),
     smartReach: inspectSmartReach(files, maskComments),
     agentFramework: inspectAgentFramework(files, maskComments),
+    ...inspectWindowPrivacy(files, maskComments),
     materialInventory: await inspectMaterialInventory(files, maskComments),
     evidence: [compatible.evidence, target.evidence, compile.evidence, ...localSdk.evidence].filter(Boolean),
     unknown,
@@ -522,6 +525,7 @@ export async function inspectProject(projectPath, options = {}) {
 }
 
 export function evaluateCompatibility(inspection, profile) {
+  if (["float-view-ball", "dlp-anti-peep"].includes(profile.featureId)) return evaluateWindowPrivacy(inspection, profile)
   if (profile.featureId === "agent-framework-kit") return evaluateAgentFramework(inspection, profile)
   if (profile.featureId === "smart-reach") return evaluateSmartReach(inspection, profile)
   if (profile.featureId === "easygo-parallel") return evaluateEasyGo(inspection, profile)
@@ -593,6 +597,9 @@ export function evaluateCompatibility(inspection, profile) {
     return { ...base, missingConditions: ["Unable to determine compatible API level"] }
   }
 
+  if (target === null) {
+    return { ...base, missingConditions: ["Unable to determine target API level"] }
+  }
   const routes = profile.routes
   const availableRoutes = []
   const guardedRoutes = []
@@ -601,8 +608,8 @@ export function evaluateCompatibility(inspection, profile) {
     const sdkRoute = sdk.routes[route.id]
     const sdkAvailable = sdkRoute?.status === "supported"
     const compileAvailable = compile === null ? sdkApi >= route.minApi : compile >= route.minApi
-    const requiredTargetApi = route.minTargetApi ?? route.minApi
-    const targetAvailable = route.minTargetApi === undefined || (target !== null && target >= route.minTargetApi)
+    const requiredTargetApi = Math.max(route.minApi, route.minTargetApi ?? 0)
+    const targetAvailable = target !== null && target >= requiredTargetApi
     if (sdkAvailable && compileAvailable && targetAvailable && compatible >= route.minApi) {
       availableRoutes.push(route.id)
     } else if (sdkAvailable && compileAvailable && targetAvailable && target !== null && target >= route.minApi) {
@@ -611,7 +618,7 @@ export function evaluateCompatibility(inspection, profile) {
     } else {
       upgradeOptions.push({
         route: route.id,
-        upgradeTargetApi: requiredTargetApi,
+        upgradeTargetApi: Math.max(target, requiredTargetApi),
         upgradeCompileApi: route.minApi,
         upgradeLocalSdkApi: sdkAvailable ? null : route.minApi,
         sdkStatus: sdkRoute?.status ?? "not_checked",
@@ -653,7 +660,7 @@ export function evaluateCompatibility(inspection, profile) {
 
   const reasons = []
   for (const route of routes.filter((item) => detectedRouteSignals[item.id] && !availableRoutes.includes(item.id))) {
-    const requiredTargetApi = route.minTargetApi ?? route.minApi
+    const requiredTargetApi = Math.max(route.minApi, route.minTargetApi ?? 0)
     reasons.push(`Detected ${route.id} integration signals, but the route is unavailable; require local SDK/compile API ${route.minApi} and target API ${requiredTargetApi}`)
   }
   for (const route of routes.filter((item) => item.applicationLevel && availableRoutes.includes(item.id))) {
@@ -712,6 +719,7 @@ function effectiveArkuiMaterialState(inspection) {
 }
 
 export function verifyInspection(inspection, compatibility, routeOption = "auto") {
+  if (["float-view-ball", "dlp-anti-peep"].includes(compatibility.featureId)) return verifyWindowPrivacy(inspection, compatibility, routeOption)
   if (compatibility.featureId === "agent-framework-kit") return verifyAgentFramework(inspection, compatibility, routeOption)
   if (compatibility.featureId === "smart-reach") return verifySmartReach(inspection, compatibility, routeOption)
   if (compatibility.featureId === "easygo-parallel") return verifyEasyGo(inspection, compatibility, routeOption)
@@ -1123,7 +1131,7 @@ export function verifyInspection(inspection, compatibility, routeOption = "auto"
     ? s.hdsTabs.detected && s.barFloatingStyle.detected
     : route === "arkui" && s.nativeTabsFloatingStyle.detected
   const needsPaddingReview = hasFloatingStyle && s.layoutBottomPadding.detected
-  const tabLayoutCandidates = [s.outerBarWidth, s.tabDirectionCandidate, s.tabPositionCandidate]
+  const tabLayoutCandidates = [s.outerBarWidth, s.tabDirectionCandidate, s.tabPositionCandidate, s.tabDeviceBranchCandidate]
     .flatMap((signal) => signal?.evidence ?? [])
   checks.push(check(
     "floating-tabs-width-and-breakpoints",
@@ -1131,7 +1139,8 @@ export function verifyInspection(inspection, compatibility, routeOption = "auto"
     hasFloatingStyle ? "warn" : "not_applicable",
     tabLayoutCandidates,
     !hasFloatingStyle ? "No floating Tabs detected" :
-      (tabLayoutCandidates.length ? "Outer barWidth or direction/position candidates detected. " : "No outer barWidth or side-layout candidate detected; this does not prove branch coverage. ") +
+      (tabLayoutCandidates.length ? "Width, direction/position or device/breakpoint candidates detected. " : "No layout or device/breakpoint candidate detected; this does not prove branch coverage. ") +
+      "Trace the integration branch predicate: select integrated versus original component trees only by the route runtime API threshold (HDS 23, ArkUI 26), never by device type, breakpoint or material support. Follow wrappers even when no candidate matches. Original-branch device adaptation remains unchanged; do not redesign it. " +
       "Review component ownership, wrappers and version branches. Remove outer .barWidth(...) only from the immersive integration branch; use barFloatingStyle.barWidth or its defaults. Use vertical(false) and BarPosition.End at every breakpoint, orientation and window size. Preserve original responsive side/bottom layout and widths only in the legacy API branch. Material disabled or unsupported-device fallback keeps bottom Tabs. Static coexistence is not a failure; verify layouts on target pages"
   ))
   checks.push(check(
