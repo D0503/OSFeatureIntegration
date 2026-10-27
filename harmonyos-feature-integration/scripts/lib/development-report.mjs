@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import { access, copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import { tmpdir } from "node:os"
+import { parseDevecoJson } from "./deveco-json.mjs"
 
 export const hash = (value) => createHash("sha256").update(value).digest("hex")
 export const exists = async (path) => { try { await access(path); return true } catch { return false } }
@@ -67,7 +68,7 @@ function deviceLabel(run) {
   const kind = run.deviceKind === "emulator" ? "（模拟器）" : ""
   let info = run.deviceInfo
   if (typeof info === "string") {
-    try { info = JSON.parse(info) } catch {
+    try { info = parseDevecoJson(info, "device") } catch {
       return `设备：${escape(run.device || "未指定")}${kind}；系统：${escape(info && !/^[\s]*[\[{]/.test(info) ? info : "未采集")}。`
     }
   }
@@ -149,7 +150,7 @@ export async function saveReport(output, directory, collection) {
   lines.push("", "## 视觉验证结果", "")
   for (const r of collection.runs) {
     lines.push(`### ${escape(r.goal)}`, "", `页面 / 组件：${escape(r.changes.page)} / ${escape(r.changes.component)}。`, "", `视觉结果：**${statusLabel(r.checks.visual.status)}**。${escape(r.checks.visual.summary)}`, "", deviceLabel(r), "", `验证时间：${escape(r.createdAt)}；整体结果：${statusLabel(deriveVerdict(r))}。`, "", "| 验证阶段 | 结果 | 说明 |", "|---|---|---|")
-    const names = { static: "静态检查", sdk: "SDK", build: "构建", install: "安装启动", navigation: "目标页导航", runtime: "运行观察", visual: "视觉验证" }
+    const names = { static: "静态检查", sdk: "SDK", build: "构建", install: "安装启动", navigation: "目标页导航", runtime: "运行观察", visual: "视觉验证", fallback: "兼容方案回退" }
     for (const [key, value] of Object.entries(r.checks).filter(([key]) => key !== "visual")) lines.push(`| ${names[key]} | ${statusLabel(value.status)} | ${escape(stageSummary(key, value))} |`)
     const findings = r.staticFindings ?? []
     if (findings.length || !["passed", "not_applicable"].includes(r.checks.static.status)) {
@@ -176,7 +177,7 @@ export async function saveReport(output, directory, collection) {
       if (e.origin === "manual") lines.push("", `截图来源：本轮手动验证采集并导入，具体结论见验证结果。`)
     }
   }
-  lines.push("", "## 升级与兼容", "", "SDK 版本与回退行为按整个工程记录一份；保留行为覆盖所有改造项。", "")
+  lines.push("", "## 升级与兼容", "", "SDK 版本与回退行为按整个工程记录一份；保留行为覆盖所有改造项。存在低版本兼容分支时，回退表结论须来自低版本环境实测（环境、证据与判定见各改造项的“兼容方案回退”阶段），不以静态复核或构建通过替代；未能实测时保留未验证并写明具体阻断。", "")
   const first = collection.runs[0]
   const after = first.after ?? {}
   lines.push("| 项目 | 改造前 | 改造后 |", "|---|---|---|")

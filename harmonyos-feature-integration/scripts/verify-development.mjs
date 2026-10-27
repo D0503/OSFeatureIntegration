@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import { evaluateCompatibility, inspectProject, loadFeature, verifyInspection } from "./lib/project-tools.mjs"
 import { runHvigorBuild } from "./lib/hvigor-build.mjs"
 import { navigate, runDeveco, validateNavigation } from "./lib/development-device.mjs"
+import { parseDevecoJson } from "./lib/deveco-json.mjs"
+import { deployProduct } from "./lib/development-deployment.mjs"
 import { cacheDirectory, deriveVerdict, exists, fileHash, hash, loadCollection, sameTarget, saveReport, validateChanges } from "./lib/development-report.mjs"
 import { WINDOW_PRIVACY_FEATURES, windowPrivacyScenarios, validateWindowPrivacyJudgment } from "./lib/window-privacy-runtime.mjs"
 
@@ -13,6 +15,17 @@ const skillRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const check = (status, summary) => ({ status, summary })
 const requiredText = (v, name) => { if (typeof v !== "string" || !v.trim()) throw new Error(`${name} 必填`) }
 const PNG_MAGIC = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff])
+
+function imageExt(content) {
+  if (content.subarray(0, 8).equals(PNG_MAGIC)) return "png"
+  if (content.subarray(0, 3).equals(JPEG_MAGIC)) return "jpg"
+  return null
+}
+
+function commandEvidence(args, result) {
+  return `${JSON.stringify(args)}\nexitCode: ${result.exitCode ?? "unknown"}\n--- stdout ---\n${result.stdout ?? ""}\n--- stderr ---\n${result.stderr ?? ""}`
+}
 
 function nextEvidenceId(run) {
   return `E${Math.max(0, ...run.evidence.map((e) => Number(/^E(\d+)$/.exec(e.id)?.[1] ?? 0))) + 1}`
@@ -21,8 +34,8 @@ function nextEvidenceId(run) {
 async function captureDeviceScreenshot(run, runDirectory, scenario, call) {
   const path = join(runDirectory, `target-${randomUUID()}.png`)
   const result = await call(["ui", "screenshot", "--device", run.device, "--path", path])
-  if (result.exitCode !== 0 || !await exists(path) || !(await readFile(path)).subarray(0, 8).equals(PNG_MAGIC)) {
-    throw new Error("截图采集失败或文件不是有效 PNG")
+  if (result.exitCode !== 0 || !await exists(path) || !imageExt(await readFile(path))) {
+    throw new Error("截图采集失败或文件不是有效 PNG/JPEG 图片")
   }
   if (scenario) run.evidence = run.evidence.filter((e) => e.type !== "screenshot" || e.scenario !== scenario)
   run.evidence.push({ id: nextEvidenceId(run), type: "screenshot", path, sha256: await fileHash(path), ...(scenario ? { scenario } : {}) })
@@ -32,7 +45,7 @@ async function captureDeviceScreenshot(run, runDirectory, scenario, call) {
 
 function detectDeviceKind(deviceInfo, target) {
   let info = deviceInfo
-  if (typeof info === "string") { try { info = JSON.parse(info) } catch { info = null } }
+  if (typeof info === "string") { try { info = parseDevecoJson(info, "device") } catch { return "unknown" } }
   const candidate = info?.device ?? info?.data ?? info
   const fields = [target, candidate?.name, candidate?.serial ?? candidate?.serialNumber, candidate?.deviceType ?? candidate?.type, candidate?.connectType]
   return fields.some((v) => typeof v === "string" && (/emulator|模拟器|simulator/i.test(v) || /^127\.0\.0\.1:\d+$/.test(v.trim()))) ? "emulator" : "physical"
@@ -40,7 +53,7 @@ function detectDeviceKind(deviceInfo, target) {
 
 export function detectAgentDeviceKind(deviceInfo, target) {
   let info = deviceInfo
-  if (typeof info === "string") { try { info = JSON.parse(info) } catch { info = null } }
+  if (typeof info === "string") { try { info = parseDevecoJson(info, "device") } catch { info = null } }
   const candidate = info?.device ?? info?.data ?? info
   const values = [target, candidate?.name, candidate?.model, candidate?.serial ?? candidate?.serialNumber, candidate?.deviceType ?? candidate?.type, candidate?.kind, candidate?.deviceKind, candidate?.connectType]
   if (candidate?.isEmulator === true || values.some((v) => typeof v === "string" && (/emulator|模拟器|simulator/i.test(v) || /^127\.0\.0\.1:\d+$/.test(v)))) return "emulator"
@@ -59,7 +72,7 @@ export function detectPrivacyDeviceKind(deviceInfo, target) {
   const kind = detectAgentDeviceKind(deviceInfo, target)
   if (kind !== "physical") return kind
   let info = deviceInfo
-  if (typeof info === "string") { try { info = JSON.parse(info) } catch { return "unknown" } }
+  if (typeof info === "string") { try { info = parseDevecoJson(info, "device") } catch { return "unknown" } }
   const device = info?.device ?? info?.data ?? info
   return /^phone$/i.test(device?.deviceType ?? device?.type ?? "") ? "physical" : "unknown"
 }
@@ -67,8 +80,10 @@ export function detectPrivacyDeviceKind(deviceInfo, target) {
 async function importManualEvidence(run, runDirectory, manifest) {
   if (manifest?.schemaVersion !== "1.0" || manifest.runId !== run.runId || manifest.goal !== run.goal || !run.device || manifest.device !== run.device) throw new Error("手动证据必须绑定本轮 runId、goal 和 device")
   if (run.checks.build.status !== "passed") throw new Error("本轮构建未通过，不能导入手动验证")
-  const build = run.evidence.find((e) => e.type === "build_log" && e.id === manifest.buildEvidence?.id && e.sha256 === manifest.buildEvidence?.sha256)
-  if (!build || !await exists(build.path) || await fileHash(build.path) !== build.sha256) throw new Error("手动证据缺少本轮构建证据或哈希不匹配")
+  const build = run.evidence.find((e) => e.type === "build_log" && e.id === manifest.buildEvidence?.id)
+  if (!build) throw new Error(`手动证据引用的构建证据 id 不在本轮运行中：${manifest.buildEvidence?.id}；请以本轮运行输出的 build_log 证据 id 与 sha256 为准`)
+  if (build.sha256 !== manifest.buildEvidence?.sha256) throw new Error(`手动证据的构建哈希不匹配：期望 ${build.sha256}，实际填写 ${manifest.buildEvidence?.sha256}；请从本轮运行输出或 collection.json 复制`)
+  if (!await exists(build.path) || await fileHash(build.path) !== build.sha256) throw new Error("本轮构建日志文件已丢失或内容哈希不符，请重新执行本轮构建验证")
   requiredText(manifest.provenance, "manualEvidence.provenance（设备、本轮构建产物与采集过程的关联依据）")
   if (!Array.isArray(manifest.files) || !manifest.files.length) throw new Error("manualEvidence.files 必须非空")
   const allowedTypes = new Set(["screenshot", "component_tree", "runtime_log", "install_log", "navigation_log", "device_info"])
@@ -79,13 +94,13 @@ async function importManualEvidence(run, runDirectory, manifest) {
     requiredText(item.path, "手动证据 path")
     const content = await readFile(resolve(item.path))
     if (!content.length || hash(content) !== item.sha256) throw new Error(`手动证据为空或哈希不匹配：${item.key}`)
-    if (item.type === "screenshot" && !content.subarray(0, 8).equals(PNG_MAGIC)) throw new Error("手动截图不是有效 PNG")
+    if (item.type === "screenshot" && !imageExt(content)) throw new Error(`手动截图不是有效 PNG/JPEG 图片：${item.key}；设备 snapshot_display 采集的 JPEG 可直接使用`)
     files.set(item.key, { ...item, content })
   }
   if (manifest.deviceInfo !== undefined) {
     const info = files.get(manifest.deviceInfo)
     if (info?.type !== "device_info") throw new Error("deviceInfo 必须引用设备信息 JSON 证据")
-    const data = JSON.parse(info.content.toString("utf8"))
+    const data = parseDevecoJson(info.content.toString("utf8"), "device")
     const device = data?.device ?? data?.data ?? data
     if ((device?.serial ?? device?.serialNumber) !== run.device) throw new Error("手动设备信息与本轮 device 不一致")
     if (run.deviceKind === "emulator") throw new Error("不能用手动证据覆盖本轮模拟器事实")
@@ -96,7 +111,7 @@ async function importManualEvidence(run, runDirectory, manifest) {
   if (run.feature === "smart-reach" && run.deviceKind !== "physical") throw new Error("智感握姿手动验证仅允许已确认的真机")
   const stages = manifest.stages ?? {}
   for (const [key, stage] of Object.entries(stages)) {
-    if (!["install", "navigation"].includes(key) || !["passed", "failed", "inconclusive"].includes(stage.status)) throw new Error("手动阶段仅支持 install/navigation 及 passed/failed/inconclusive")
+    if (!["install", "navigation"].includes(key) || !["passed", "failed", "inconclusive"].includes(stage.status)) throw new Error(`手动阶段 key 仅支持 install/navigation（status 仅支持 passed/failed/inconclusive），收到：${key}/${stage.status}；运行观察结论不写在 stages 中，请在 --manual-evidence 导入后用 --judgment 的 runtime/visual 补录`)
     requiredText(stage.summary, `manualEvidence.stages.${key}.summary`)
     if (!Array.isArray(stage.evidence) || !stage.evidence.length || stage.evidence.some((id) => !files.has(id))) throw new Error("手动阶段缺少本次导入的证据引用")
     const types = stage.evidence.map((id) => files.get(id).type)
@@ -109,7 +124,8 @@ async function importManualEvidence(run, runDirectory, manifest) {
   const imported = new Map()
   for (const [key, item] of files) {
     const id = nextEvidenceId(run)
-    const path = join(runDirectory, `${id}.${item.type === "screenshot" ? "png" : "log"}`)
+    const ext = item.type === "screenshot" ? (imageExt(content) ?? "png") : "log"
+    const path = join(runDirectory, `${id}.${ext}`)
     await writeFile(path, item.content)
     const evidence = { id, type: item.type, path, sha256: item.sha256, origin: "manual", scenario: key }
     run.evidence.push(evidence)
@@ -130,9 +146,10 @@ async function importDeveloperScreenshots(run, runDirectory, paths) {
     const source = resolve(item)
     if (!await exists(source)) throw new Error(`导入截图不存在：${item}`)
     const content = await readFile(source)
-    if (!content.subarray(0, 8).equals(PNG_MAGIC)) throw new Error(`导入截图不是有效 PNG：${item}`)
+    const ext = imageExt(content)
+    if (!ext) throw new Error(`导入截图不是有效 PNG/JPEG 图片：${item}`)
     const id = nextEvidenceId(run)
-    const path = join(runDirectory, `${id}.png`)
+    const path = join(runDirectory, `${id}.${ext}`)
     await writeFile(path, content)
     run.evidence.push({ id, type: "screenshot", origin: "developer", path, sha256: hash(content) })
   }
@@ -196,8 +213,10 @@ export async function applyJudgment(run, judgment, runs = [run]) {
     if (!Array.isArray(item.evidence) || !item.evidence.length) throw new Error(`${level} 缺少证据引用`)
     const evidence = []
     for (const ref of item.evidence) {
-      const e = run.evidence.find((v) => v.id === ref.id && v.sha256 === ref.sha256)
-      if (!e || !await exists(e.path) || await fileHash(e.path) !== e.sha256) throw new Error("判定证据不属于本次运行、已丢失或哈希不匹配")
+      const e = run.evidence.find((v) => v.id === ref.id)
+      if (!e) throw new Error(`判定引用的证据 id 不在本轮运行中：${ref.id}；${level} 判定只能引用本轮 evidence 列表中的 id/sha256（--manual-evidence 导入的证据以导入后返回的新 id 为准）`)
+      if (e.sha256 !== ref.sha256) throw new Error(`判定引用的证据哈希不匹配：${ref.id} 期望 ${e.sha256}，实际填写 ${ref.sha256}`)
+      if (!await exists(e.path) || await fileHash(e.path) !== e.sha256) throw new Error(`判定引用的证据文件已丢失或内容不符：${ref.id}`)
       evidence.push(e)
     }
     if (level === "visual" && !evidence.some((v) => v.type === "screenshot")) throw new Error("视觉判定必须引用本次目标页面截图")
@@ -219,7 +238,30 @@ export async function applyJudgment(run, judgment, runs = [run]) {
     run.checks[level] = check(item.status, item.summary)
     if ((run.feature === "agent-framework-kit" || WINDOW_PRIVACY_FEATURES.includes(run.feature)) && level === "runtime" && item.observations) run.checks.runtime.observations = structuredClone(item.observations)
   }
-  if (!judgment.visual && !judgment.runtime && !judgment.staticReview) throw new Error("判定文件没有 visual、runtime 或 staticReview 结论")
+  if (judgment.fallback) {
+    if (run.checks.build.status !== "passed") throw new Error("构建未通过，不能补录兼容方案回退判定")
+    const item = judgment.fallback
+    if (!["low-api", "unsupported", "disabled"].includes(item.condition)) throw new Error("fallback.condition 只支持 low-api、unsupported 或 disabled")
+    if (!["passed", "failed", "inconclusive"].includes(item.status)) throw new Error("fallback.status 无效")
+    requiredText(item.summary, "fallback.summary")
+    if (!Array.isArray(item.evidence) || !item.evidence.length) throw new Error("fallback 缺少证据引用")
+    const evidence = []
+    for (const ref of item.evidence) {
+      const e = run.evidence.find((v) => v.id === ref.id)
+      if (!e) throw new Error(`判定引用的证据 id 不在本轮运行中：${ref.id}；fallback 判定只能引用本轮 evidence 列表中的 id/sha256（--manual-evidence、--import-screenshot 导入的证据以导入后返回的新 id 为准）`)
+      if (e.sha256 !== ref.sha256) throw new Error(`判定引用的证据哈希不匹配：${ref.id} 期望 ${e.sha256}，实际填写 ${ref.sha256}`)
+      if (!await exists(e.path) || await fileHash(e.path) !== e.sha256) throw new Error(`判定引用的证据文件已丢失或内容不符：${ref.id}`)
+      evidence.push(e)
+    }
+    if (item.status === "passed" && !evidence.some((v) => v.type === "screenshot")) throw new Error("兼容方案回退通过必须引用低版本或回退环境的运行截图")
+    run.checks.fallback = check(item.status, item.summary)
+    const entry = run.changes.fallback.find((v) => v.condition === item.condition)
+    if (entry && ["passed", "failed"].includes(item.status)) {
+      entry.status = item.status
+      entry.evidence = `${item.summary}（证据：${evidence.map((v) => v.id).join("、")}）`
+    }
+  }
+  if (!judgment.visual && !judgment.runtime && !judgment.staticReview && !judgment.fallback) throw new Error("判定文件没有 fallback、visual、runtime 或 staticReview 结论")
   if (judgment.staticReview) applyStaticReview(runs, judgment.staticReview)
 }
 
@@ -247,10 +289,18 @@ export async function verifyDevelopment(request, options = {}) {
         if (!run.device || run.checks.install.status !== "passed" || run.checks.navigation.status !== "passed") throw new Error("补采截图需要本轮安装和目标页导航已通过")
         if (run.feature === "smart-reach" || run.feature === "agent-framework-kit" || run.feature === "dlp-anti-peep") {
           const info = await (options.commandRunner ?? runDeveco)(["device", "view", "--target", run.device, "--format", "json"], request.project)
-          const kind = run.feature === "dlp-anti-peep" ? detectPrivacyDeviceKind(info.stdout, run.device) : run.feature === "agent-framework-kit" ? detectAgentDeviceKind(info.stdout, run.device) : detectDeviceKind(info.stdout, run.device)
-          if (info.exitCode !== 0 || kind !== "physical") throw new Error("补采截图只能使用已确认的真机；Agent Framework Kit 还要求 Phone/Tablet")
+          const queryId = nextEvidenceId(run)
+          const queryPath = join(directory, run.runId, `${queryId}.log`)
+          await writeFile(queryPath, commandEvidence(["device", "view", "--target", run.device, "--format", "json"], info))
+          run.evidence.push({ id: queryId, type: "device_log", path: queryPath, sha256: await fileHash(queryPath) })
+          // Persist the query even if parsing or physical-device validation stops this resume.
+          await saveReport(output, directory, collection)
+          if (info.exitCode !== 0) throw new Error(`设备信息查询命令失败（退出码：${info.exitCode ?? "未知"}）；证据：${queryPath}`)
+          const data = parseDevecoJson(info.stdout, "device")
+          const kind = run.feature === "dlp-anti-peep" ? detectPrivacyDeviceKind(data, run.device) : run.feature === "agent-framework-kit" ? detectAgentDeviceKind(data, run.device) : detectDeviceKind(data, run.device)
+          if (kind !== "physical") throw new Error("补采截图只能使用已确认的真机；Agent Framework Kit 还要求 Phone/Tablet")
           run.deviceKind = kind
-          run.deviceInfo = info.stdout
+          run.deviceInfo = data
         }
         try { await captureDeviceScreenshot(run, join(directory, run.runId), request.screenshotScenario, (args) => (options.commandRunner ?? runDeveco)(args, request.project)) }
         catch { run.checks.visual = check("not_run", "截图采集失败或文件不是有效 PNG，未完成视觉验证") }
@@ -272,9 +322,9 @@ export async function verifyDevelopment(request, options = {}) {
     await mkdir(runDirectory)
     const run = {
       runId, project: resolve(request.project), feature: request.feature, featureName: feature.displayName, goal: request.goal, route: request.route,
-      product: request.product ?? "default", buildMode: request.buildMode ?? "debug", module: request.module ?? null,
+      product: request.product ?? "default", buildMode: request.buildMode ?? "debug", module: request.module ?? null, ability: request.ability,
       changes: structuredClone(request.changes), createdAt: new Date().toISOString(), device: request.device ?? null, evidence: [],
-      checks: Object.fromEntries(["static", "sdk", "build", "install", "navigation", "runtime", "visual"].map((key) => [key, check("not_run", "尚未执行")]))
+      checks: Object.fromEntries(["static", "sdk", "build", "install", "navigation", "runtime", "visual", "fallback"].map((key) => [key, check("not_run", "尚未执行")]))
     }
     const record = async (type, content, extension = "log") => {
       const id = `E${run.evidence.length + 1}`
@@ -288,7 +338,7 @@ export async function verifyDevelopment(request, options = {}) {
       let result
       try { result = await (options.commandRunner ?? runDeveco)(args, request.project) }
       catch (error) { result = { exitCode: null, stdout: "", stderr: error.message } }
-      await record(result.exitCode === 0 ? type : "command_failure", `${JSON.stringify(args)}\n${result.stdout ?? ""}\n${result.stderr ?? ""}`)
+      await record(result.exitCode === 0 ? type : "command_failure", commandEvidence(args, result))
       return result
     }
     const { inspection, compatibility, staticResult } = await (options.inspector ?? inspectVerification)(request)
@@ -296,6 +346,14 @@ export async function verifyDevelopment(request, options = {}) {
     run.after = { sdk: inspection.localSdk.apiVersion ?? "unknown", compile: inspection.api.compile, target: inspection.api.target, compatible: inspection.api.compatible }
     await record("static", JSON.stringify({ inspection, compatibility, staticResult }, null, 2), "json")
     run.checks.sdk = compatibility.availableRoutes?.includes(run.route) && inspection.localSdk.status === "valid" ? check("passed", `本机 SDK API ${run.after.sdk}，${run.route} 路线可用`) : check("failed", "本机 SDK 或工程版本不满足所选路线，需先完成版本门禁")
+    const routeMinApi = compatibility.routes?.[run.route]?.minApi ?? compatibility.sdk?.routes?.[run.route]?.minApi
+    if (Number.isInteger(routeMinApi) && Number.isInteger(run.after.compatible) && routeMinApi > run.after.compatible) {
+      run.checks.fallback = check("not_run", `存在低版本兼容分支（compatible API ${run.after.compatible} < 路线门槛 ${routeMinApi}），需在低版本环境实测回退表现后补录判定`)
+    } else if (!Number.isInteger(run.after.compatible) || !Number.isInteger(routeMinApi)) {
+      run.checks.fallback = check("not_run", "路线门槛或最低兼容 API 未知，需先确认版本关系再判断是否存在低版本回退分支")
+    } else {
+      run.checks.fallback = check("not_applicable", `工程最低兼容 API ${run.after.compatible} 不低于所选路线门槛 ${routeMinApi}，无低版本回退分支`)
+    }
     run.staticFindings = staticResult.checks.filter((v) => ["fail", "warn"].includes(v.status))
     const priorReviews = new Map(collection.runs.flatMap((r) => (r.staticFindings ?? []).filter((f) => f.review).map((f) => [f.id, f.review])))
     for (const finding of run.staticFindings) if (run.feature !== "agent-framework-kit" && !WINDOW_PRIVACY_FEATURES.includes(run.feature) && finding.status === "warn" && priorReviews.has(finding.id)) finding.review = structuredClone(priorReviews.get(finding.id))
@@ -305,27 +363,39 @@ export async function verifyDevelopment(request, options = {}) {
     if (run.checks.sdk.status === "failed" || run.checks.static.status === "failed") run.checks.build.summary = "SDK 或静态门禁失败，未构建"
     else if (request.executeBuild) {
       let result
-      try { result = await (options.buildRunner ?? runHvigorBuild)(request.project, { product: run.product, buildMode: run.buildMode, module: run.module, modules: inspection.modules, sdkPath: inspection.localSdk.path }) }
+      try { result = await (options.buildRunner ?? runHvigorBuild)(request.project, { product: run.product, buildMode: run.buildMode, module: request.executeRun ? undefined : run.module, modules: inspection.modules, sdkPath: inspection.localSdk.path }) }
       catch (error) { result = { exitCode: null, stderr: error.message } }
       await record("build_log", `${result.stdout ?? ""}\n${result.stderr ?? ""}`)
       run.checks.build = check(result.exitCode === 0 ? "passed" : "failed", result.exitCode === 0 ? "ohpm、Hvigor 同步与打包通过" : `构建失败：${result.failedStage ?? "工具或构建阶段"}；${(result.stderr || result.stdout || "无输出").slice(-1800)}`)
       if (result.exitCode !== 0) run.checks.build.reportSummary = `构建失败，停止于${{ "ohpm install": "依赖安装", "hvigor sync": "工程同步", "hvigor build": "HAP 打包" }[result.failedStage] ?? "构建工具执行阶段"}；未继续安装，修复后需重验`
     }
-    const launchArgs = ["run", "--skip-build", "--product", run.product, "--build-mode", run.buildMode, "--device", request.device ?? ""]
-    if (run.module) launchArgs.push("--module", run.module)
-    if (request.ability) launchArgs.push("--ability", request.ability)
+    let launchArgs = []
     run.checks.install.summary = !request.executeRun ? "未请求安装运行" : !request.device ? "未指定目标设备，需先选择设备" : "本轮构建未通过，未安装运行"
     if (request.executeRun && request.device && run.checks.build.status === "passed") {
       const info = await call(["device", "view", "--target", request.device, "--format", "json"])
       run.deviceInfo = info.exitCode === 0 ? info.stdout.trim() : "系统信息采集失败"
+      let deviceError
+      if (info.exitCode !== 0) deviceError = `设备信息查询命令失败（退出码：${info.exitCode ?? "未知"}）`
+      else {
+        try { run.deviceInfo = parseDevecoJson(info.stdout, "device") }
+        catch (error) { deviceError = error.message }
+      }
       if (info.exitCode === 0) run.deviceKind = run.feature === "dlp-anti-peep" ? detectPrivacyDeviceKind(run.deviceInfo, request.device) : run.feature === "agent-framework-kit" ? detectAgentDeviceKind(run.deviceInfo, request.device) : detectDeviceKind(run.deviceInfo, request.device)
-      if (run.feature === "agent-framework-kit" && run.deviceKind !== "physical") {
+      if (deviceError) {
+        run.checks.install = { ...check("failed", deviceError), reportSummary: deviceError }
+      } else if (run.feature === "agent-framework-kit" && run.deviceKind !== "physical") {
         run.checks.install = check("not_run", "Agent Framework Kit 需要已确认的 Phone/Tablet 真机，未执行安装运行")
       } else if (run.feature === "dlp-anti-peep" && run.deviceKind !== "physical") {
         run.checks.install = check("not_run", "防窥保护需要已确认的 Phone 真机，未执行安装运行")
       } else {
-        const result = await call(launchArgs)
-        run.checks.install = check(result.exitCode === 0 ? "passed" : "failed", result.exitCode === 0 ? "应用已安装并启动" : `安装或启动失败：${(result.stderr || result.stdout || "无输出").slice(-1200)}`)
+        try {
+          const deployment = await (options.deploymentRunner ?? deployProduct)(request.project, run, call, record)
+          launchArgs = deployment.launchArgs
+          run.deployment = deployment.plan
+          run.checks.install = check("passed", "本轮 HAP/HSP 已安装，设备模块与版本核验通过，应用已启动")
+        } catch (error) {
+          run.checks.install = { ...check("failed", error.message), reportSummary: error.message }
+        }
       }
     }
     run.checks.navigation.summary = run.checks.install.status !== "passed" ? "应用未成功安装启动" : "未提供目标页导航与断言"
@@ -333,7 +403,7 @@ export async function verifyDevelopment(request, options = {}) {
       try {
         await navigate(request.navigate, call, launchArgs, request.device, options.pause)
         run.checks.navigation = check("passed", "导航完成，目标页面断言通过")
-      } catch (error) { run.checks.navigation = check("failed", error.message) }
+      } catch (error) { run.checks.navigation = { ...check("failed", error.message), reportSummary: error.message } }
     }
     if (run.checks.navigation.status === "passed") {
       run.checks.runtime = check("inconclusive", "已进入目标页，交互与启动时机仍需结合运行证据判定")

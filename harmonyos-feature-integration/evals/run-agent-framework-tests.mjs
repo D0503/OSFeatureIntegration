@@ -123,6 +123,11 @@ const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 const secondPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")
 let shots = 0, calls = []
 const options = {
+  deploymentRunner: async (_project, _run, call) => {
+    const result = await call(["fixture-deployment"])
+    if (result.exitCode !== 0) throw new Error("fixture deployment failed")
+    return { plan: {}, launchArgs: ["fixture-launch"] }
+  },
   inspector: async () => ({ inspection: app, compatibility: compat(app), staticResult: { counts: { fail: 0, warn: 0 }, checks: [] } }),
   buildRunner: async () => ({ exitCode: 0, stdout: "fixture build" }),
   commandRunner: async (args) => {
@@ -142,7 +147,8 @@ for (const info of [{ ...physical, isEmulator: true }, {}, "not-json"]) {
   calls = []
   const req = request(`blocked-${Math.random()}`)
   const result = await verifyDevelopment(req, { ...options, commandRunner: async (args) => args[0] === "device" ? { exitCode: 0, stdout: JSON.stringify(info) } : options.commandRunner(args) })
-  assert.equal(result.status, "inconclusive")
+  assert.equal(result.status, info?.isEmulator === true ? "inconclusive" : "failed")
+  if (info?.isEmulator !== true) assert.ok((await readFile(result.report, "utf8")).includes("设备信息输出解析失败"))
   assert.ok(!calls.some((a) => a[0] === "run" || a[1] === "screenshot"))
   const { collection } = await loadCollection(req.output, project)
   await assert.rejects(applyJudgment(collection.runs[0], { schemaVersion: "1.0", runId: result.runId, goal: req.goal, runtime: { status: "passed" } }), /真机/)
