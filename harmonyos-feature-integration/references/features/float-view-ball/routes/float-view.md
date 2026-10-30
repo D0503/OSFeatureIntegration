@@ -6,7 +6,7 @@
 
 先确定展示内容、页面路径、模板、用户开启入口和结束展示的时机。复用原工程业务状态与导航，控制器的持有者需覆盖跨应用展示期。
 
-**实施前（首次修改工程前）提醒开发者：`ohos.permission.FLOAT_VIEW` 是受限 ACL 权限，必须申请并取得用户授权。** 在 HarmonyOS 开发者中心平台[申请 ACL 权限](https://developer.huawei.com/consumer/cn/doc/doccenter-getting-started/agc-help-apply-acl-0000002394212138)，核对实际签名 profile 包含该权限；ACL 获准不能代替用户授权。完整前提见[兼容性与权限](../compatibility.md)。
+首次修改前按[权限与提醒要求](../compatibility.md#权限声明acl-与用户授权)向开发者说明本次路线的权限条件和申请入口。
 
 在实际宿主 HAP 的 `module.json5` 中合并权限声明，reason 资源和 abilities 替换为工程实际值：
 
@@ -118,7 +118,7 @@ struct FloatViewPage {
 
 ## 4. 更新内容、尺寸与模板
 
-内容更新使用已加载页面的正常状态管理。主页面和窗页面共享同一份业务数据，使用宿主已有 AppStorage／LocalStorage 等方案驱动刷新；不因字段变化或条目增删重新 setUIContent、create 或 start。列表使用稳定业务 ID 作为条目标识。尺寸单位为 px，宽高必须大于 0；通过 `getFloatViewLimits(templateType)` 读取 minSize、maxSize 和 ratioLimits，再调用 `await FloatViewController.setWindowSize(size)`。第 3 步采用返回的最大尺寸，业务可在尺寸和比例约束内选择合适大小。
+内容更新使用已加载页面的正常状态管理。主页面和窗页面共享同一份业务数据，使用宿主已有 AppStorage／LocalStorage 等方案驱动刷新；不因字段变化或条目增删重新 setUIContent、create 或 start。列表使用稳定业务 ID 作为条目标识。尺寸单位为 px，宽高必须大于 0；通过 `getFloatViewLimits(templateType)` 读取 minSize、maxSize 和 ratioLimits，再调用 `await FloatViewController.setWindowSize(size)`。第 3 步采用返回的最大尺寸，业务可在尺寸和比例约束内选择合适大小；原工程已有断点或屏幕尺寸机制时，初始与后续尺寸可借用该机制取值，见[屏幕尺寸与断点响应](#屏幕尺寸与断点响应借用原工程既有机制)。
 
 `onLimitsChange` 返回约束变化，不是实际窗口尺寸；需要动态布局时在回调中更新业务保存的约束。系统可能调整请求尺寸，实际位置和尺寸通过 createFloatView 的可选 onRectChange 回调获取，资产在 STOPPED 时退订。
 
@@ -134,9 +134,9 @@ const property: floatView.TemplateProperty = {
 await FloatViewController.switchTemplate(property);
 ```
 
-switchTemplate 只改变系统模板和窗口尺寸，页面还需同步改变自己的展开／紧凑布局状态；等待接口成功后再提交页面状态，失败保留原布局。切回原模板时重新读取目标模板的限制。条目数量、显示区域和 onLimitsChange 变化时，按当前模板重算尺寸；设计尺寸从 vp 转成 px 后再校验宽高和比例限制，实际布局参考 onRectChange 与 avoidArea。详细流程见[绑定场景的更新与替换](binding.md#4-系统切换与业务更新)，这些窗更新步骤也可独立使用。
+switchTemplate 只改变系统模板和窗口尺寸，页面还需同步改变自己的展开／紧凑布局状态；等待接口成功后再提交页面状态，失败保留原布局。切回原模板时重新读取目标模板的限制。条目数量、显示区域、onLimitsChange 变化，以及原工程既有断点或屏幕尺寸机制的更新（见[屏幕尺寸与断点响应](#屏幕尺寸与断点响应借用原工程既有机制)），都按当前模板重算尺寸；设计尺寸从 vp 转成 px 后再校验宽高和比例限制，实际布局参考 onRectChange 与 avoidArea。详细流程见[绑定场景的更新与替换](binding.md#4-系统切换与业务更新)，这些窗更新步骤也可独立使用。
 
-片段放入现有异步错误处理入口，按实际状态控制操作；控制器不存在时方法抛出异常。根据 `FloatViewController.getWindowProperties().avoidArea` 布局，避免交互控件落入不响应区域，不固定为某款手机的尺寸。
+片段放入现有异步错误处理入口，按实际状态控制操作；控制器不存在时方法抛出异常。窗页面顶部必须预留固定避让空间：常规态（ROUNDED_RECTANGLE 展开矩形）top padding 32vp，mini 态（HORIZONTAL_BAR 紧凑横条）top padding 4vp，模板切换时随布局状态同步。再根据 `FloatViewController.getWindowProperties().avoidArea` 布局，避免交互控件落入不响应区域，不固定为某款手机的尺寸。
 
 ### 展开／收起页面片段
 
@@ -152,6 +152,29 @@ import { FloatViewController } from '../controllers/FloatViewController';
 export struct FloatViewContent {
   @State compact: boolean = false;
   @State switching: boolean = false;
+  @State leftAvoidWidth: number = 0;
+  @State rightAvoidWidth: number = 0;
+  private rectChanged: (info: floatView.FloatViewRectChangeInfo) => void = () => {
+    this.updateAvoidArea();
+  };
+
+  aboutToAppear(): void {
+    FloatViewController.onRectChangeCallback(this.rectChanged);
+    this.updateAvoidArea();
+  }
+
+  aboutToDisappear(): void {
+    if (FloatViewController.floatViewController) {
+      FloatViewController.offRectChangeCallback(this.rectChanged);
+    }
+  }
+
+  private updateAvoidArea(): void {
+    const properties = FloatViewController.getFloatViewProperties();
+    if (!properties) { return; }
+    this.leftAvoidWidth = this.getUIContext().px2vp(properties.avoidArea.leftRect.width);
+    this.rightAvoidWidth = this.getUIContext().px2vp(properties.avoidArea.rightRect.width);
+  }
 
   private async changeLayout(compact: boolean): Promise<void> {
     this.switching = true;
@@ -167,6 +190,7 @@ export struct FloatViewContent {
       };
       await FloatViewController.switchTemplate(property);
       this.compact = compact;
+      this.updateAvoidArea();
     } catch (error) {
       const err = error as BusinessError;
       hilog.error(0xF811, 'FloatViewContent',
@@ -187,6 +211,8 @@ export struct FloatViewContent {
             .onClick(() => { this.changeLayout(false); })
         }
         .width('100%')
+        .padding({ left: this.leftAvoidWidth + 6, right: this.rightAvoidWidth + 6 })
+        .onAreaChange(() => { this.updateAvoidArea(); })
       } else {
         Column() {
           Text('业务详细内容')
@@ -205,15 +231,91 @@ export struct FloatViewContent {
     }
     .width('100%')
     .height('100%')
+    .justifyContent(FlexAlign.Center)
+    // 顶部预留：常规态 32vp，mini 态 4vp。
+    .padding({ top: this.compact ? 4 : 32 })
   }
 }
 ```
 
-片段以目标模板的最大尺寸演示调用，实际替换为业务所需且满足模板约束的尺寸。文字替换为真实内容并沿用工程国际化；布局按 avoidArea 留出交互避让空间。若展开、紧凑内容拆成子组件，可由父组件 `@Provide` 保存布局状态、子组件 `@Consume` 共享；仍在 switchTemplate 成功后修改状态，不另建控制器或重载页面。
+片段以目标模板的最大尺寸演示调用，实际替换为业务所需且满足模板约束的尺寸。文字替换为真实内容并沿用工程国际化；页面根容器按当前形态预留顶部避让：常规态（展开矩形）padding 32vp、mini 态（紧凑横条）padding 4vp，随 compact 状态在 switchTemplate 成功后同步切换，mini 态还需在内容容器（包含摘要及展开按钮）设置左右 padding，分别取 `avoidArea.leftRect.width`、`avoidArea.rightRect.width` 经 `px2vp` 转换后的值，再各加 6vp 内容留白。6vp 是页面留白，不属于系统 avoidArea；不要在父子容器重复累加。若展开、紧凑内容拆成子组件，可由父组件 `@Provide` 保存布局状态、子组件 `@Consume` 共享；仍在 switchTemplate 成功后修改状态，不另建控制器或重载页面。
 
-**内容驱动尺寸**：展开布局按头部、内容条目和操作区计算高度，紧凑布局按摘要和操作区计算宽度；通过实际 UIContext 将 vp 换为 px，再按目标模板的宽高及比例约束选取尺寸。内容超过窗口上限时使用内部滚动或截断，不复制固定的单行高度、断点或窗口大小。
+**请求尺寸不是保证值**：系统可能按模板约束调整请求的宽高（横条模板的实际高度常小于请求高度），最终矩形以 `onRectChange` 为准。因此内容行**不写固定 height**，由内容自适应高度，垂直位置交给根容器 `justifyContent(FlexAlign.Center)`——窗口无论实际多高内容都居中，不会偏下或底部裁剪（上方片段即此写法）。确需固定视觉行高的少数场景，才从 `onRectChange` 的 `windowRect.height` 换算实际高度并收敛行高，不凭请求值设定。
+
+`avoidArea` 内的组件不响应手势，左右留白也必须覆盖展开按钮，不能只给文本加 padding。属性须在窗口有效后读取；页面加载期间返回 undefined 时暂不更新，并在 STARTED 后通过业务现有状态通知触发首次读取。片段在内容布局、模板切换成功和窗口矩形变化后刷新；页面退出仅退订自己的 rectChanged 回调。若工程已通过创建时的 onRectChange 统一分发矩形变化，复用该回调刷新上述状态，不重复注册。左右 padding 是页面内部避让，不额外增加已设置的窗口外部宽度。
+
+**内容驱动尺寸**：展开布局按头部、内容条目和操作区计算高度，紧凑布局按摘要和操作区计算宽度，顶部预留（常规态 32vp、mini 态 4vp）计入各自高度；通过实际 UIContext 将 vp 换为 px，再按目标模板的宽高及比例约束选取尺寸。内容超过窗口上限时使用内部滚动或截断，不复制固定的单行高度、断点或窗口大小；计算值仅用于请求尺寸，页面布局不绑定它（见上文「请求尺寸不是保证值」）。
 
 **可选过渡效果**：需要淡入淡出时，可在页面 Stack 顶层放置覆盖层，通过 opacity 与 animation 控制，并设置 `hitTestBehavior(HitTestMode.None)`。覆盖层只用于视觉过渡，不承担防窥保护。切换完成或失败后均收起覆盖层；动画时长不作为系统接口完成依据，页面退出时清理自己创建的定时任务。
+
+### 屏幕尺寸与断点响应（借用原工程既有机制）
+
+设备屏幕尺寸变化（折叠屏展开/折叠、旋转、分屏）时，闪控窗不会自动跟随：窗口停留在创建时的尺寸，可能与新屏幕不匹配。是否让闪控窗跟随更新，由原工程现状决定：
+
+| 原工程现状 | 闪控窗的处理 |
+|---|---|
+| 已有断点或屏幕尺寸响应机制 | 借用该机制，断点变化时重算并更新窗口尺寸（见下文三步） |
+| 没有该机制 | 不响应：保持创建时尺寸，仍受 onLimitsChange 约束更新，不为闪控窗专门新增屏幕尺寸监听或断点工具 |
+
+「已有机制」指工程中已存在的屏幕尺寸感知设施，例如断点工具类（按屏幕宽度分档并更新状态）、`display.on('change')` 订阅、媒体查询、主窗口 `windowSizeChange` 监听或 GridRow 断点状态；适配过折叠屏或大屏的工程通常已有其中一种。
+
+借用分三步：
+
+1. 找状态源：定位原工程维护断点或屏幕尺寸值的状态，如 AppStorage 键、全局状态库、@Provide/@Consume、事件总线。该机制已订阅屏幕变化并在变化时更新断点值，闪控窗不新建任何监听。
+2. 窗页面消费该状态：闪控窗页面接入同一状态并在变化时收到通知；订阅与退订由该机制的既有所有者管理。
+3. 重算尺寸：回调中按当前模板读取 minSize、maxSize，期望尺寸（vp）收敛到限制内并转 px，调用 `setWindowSize`。
+
+```typescript
+import { floatView, window } from '@kit.ArkUI';
+import { BusinessError } from '@kit.BasicServicesKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
+import { FloatViewController } from '../controllers/FloatViewController';
+
+@Component
+export struct FloatViewBreakpointSizer {
+  // 断点状态源接入原工程既有机制：AppStorage 键、@Consume、状态库、事件总线等
+  // 按实际机制选择，currentBreakpoint 为占位键名，窗页面不新建监听。
+  @StorageLink('currentBreakpoint') @Watch('onBreakpointChange') currentBreakpoint: number = 1;
+  @State compact: boolean = false;
+  @State itemCount: number = 3; // 业务条目数，接现有数据源。
+
+  private onBreakpointChange(): void {
+    const templateType = this.compact
+      ? floatView.FloatViewTemplateType.HORIZONTAL_BAR
+      : floatView.FloatViewTemplateType.ROUNDED_RECTANGLE;
+    const limits = FloatViewController.getFloatViewLimits(templateType);
+    if (limits === null) { return; }
+    const uiContext = this.getUIContext();
+    // 期望尺寸按业务内容计算：宽度取当前断点下的业务设计宽度，
+    // 高度取基础高度 + 条目数×行高；数值为占位，统一收敛到模板 min/max 后转 px。
+    const widthVp: number = Math.min(Math.max(355, uiContext.px2vp(limits.minSize.width)),
+      uiContext.px2vp(limits.maxSize.width));
+    const heightVp: number = Math.min(Math.max(78 + 32 * this.itemCount,
+      uiContext.px2vp(limits.minSize.height)), uiContext.px2vp(limits.maxSize.height));
+    const size: window.Size = {
+      width: uiContext.vp2px(widthVp),
+      height: uiContext.vp2px(heightVp)
+    };
+    FloatViewController.setWindowSize(size).catch((err: BusinessError) => {
+      hilog.error(0xF811, 'FloatViewBreakpointSizer', 'Resize by breakpoint failed: %{public}s',
+        String(err.code));
+    });
+  }
+
+  build() {
+    // 业务内容；顶部预留常规态 32vp、mini 态 4vp。
+    Column() {
+    }
+    .width('100%')
+    .height('100%')
+    .padding({ top: this.compact ? 4 : 32 })
+  }
+}
+```
+
+- 片段中的设计宽度、基础高度与行高为占位数值，替换为业务实际值；`@StorageLink('currentBreakpoint')` 对应第 1 步找到的状态源，原工程使用 @Consume、状态库或事件总线时替换为等价接入方式。
+- 重算流程与第 4 节一致：读取当前模板 minSize、maxSize 和 ratioLimits，期望尺寸从 vp 转 px 并收敛到限制内再 `setWindowSize`；模板切换时同样按当前断点取目标模板尺寸，不直接沿用最大尺寸。
+- HIDDEN、IN_SIDEBAR、IN_FLOATING_BALL 期间断点可能变化：尺寸更新只调整窗口尺寸参数，不拉起窗口；恢复可见前按当前断点核对一次。
 
 ## 5. 恢复主窗口与读取窗口属性
 
@@ -274,15 +376,7 @@ FloatViewController.stopFloatView().catch((err: BusinessError) => {
 
 ## 异常与注意事项
 
-| 现象 | 检查重点 |
-|---|---|
-| 权限失败 | 宿主 FLOAT_VIEW 声明、reason 资源、ACL、实际签名 profile 和用户授权 |
-| 不支持或能力检测失败 | API26、SysCap、设备与窗口模式、isFloatViewEnabled；失败保留原业务 |
-| 空窗或页面加载失败 | pages profile 路径、页面资源、加载完成后才 start |
-| 尺寸不符 | px 单位、当前模板尺寸与比例约束、onRectChange 实际结果 |
-| 重复窗口或启动冲突 | 创建入口并发、应用前台、已有窗／球／画中画是否已结束 |
-| 恢复失败 | 用户点击来源、STARTED 状态、主窗口生命周期及参数类型 |
-| 停止后仍有回调 | 配对退订状态、限制及自行添加的矩形监听，清理业务订阅 |
+运行失败时按[闪控窗排查](../troubleshooting.md#闪控窗排查)核对证据。
 
 错误记录具体操作及 `BusinessError.code/message`，其他问题见[排障](../troubleshooting.md)；不支持、未授权及功能关闭沿用[回退策略](../fallback.md)。
 
@@ -292,13 +386,14 @@ FloatViewController.stopFloatView().catch((err: BusinessError) => {
 
 - 授权通过后前台创建、页面加载、STARTED、内容更新、关闭及再次开启。
 - 权限拒绝、查询失败、后台启动、无效页面、重复点击与已有球／画中画冲突，不误报启动成功。
-- 两类模板、尺寸与比例限制变化、实际矩形、交互避让区域、点击恢复正确业务页面。
+- 两类模板、尺寸与比例限制变化、实际矩形、顶部预留随形态在 32vp／4vp 间同步、交互避让区域、点击恢复正确业务页面。
+- 原工程已有断点或屏幕尺寸机制时，屏幕尺寸变化（折叠屏展开/折叠、旋转、分屏）下窗尺寸经该机制更新且仍满足当前模板限制，窗页面不重复订阅；原工程没有该机制时窗保持创建尺寸，不为窗新增监听。
 - 拖动、最小化进入侧栏、恢复、用户关闭、系统替换和主窗口销毁后监听与资源收敛；侧栏及垃圾桶操作按设备和模式支持条件验收。
 - 加载、启动及停止失败后保留可诊断状态，重试不产生重复监听。
 
 静态检查通过不等于设备功能通过，缺少签名或适配设备时保留待验收状态。
 
-**实施结束后的最终交付说明必须再次提醒：FLOAT_VIEW 是受限 ACL 权限，必须完成[ACL 申请](https://developer.huawei.com/consumer/cn/doc/doccenter-getting-started/agc-help-apply-acl-0000002394212138)并取得用户授权。** 接入后需要重新签名；本地调试使用自动签名时，同意本次权限申请，并核对更新后的签名 profile 包含所需权限。声明权限或编译通过不能证明权限已生效。
+交付时按[权限与提醒要求](../compatibility.md#权限声明acl-与用户授权)向开发者说明本次路线的权限条件和申请入口。
 
 ### 分步调用与补充监听
 

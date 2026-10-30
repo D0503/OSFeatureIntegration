@@ -4,7 +4,7 @@
 
 ## 开发准备
 
-**实施前提醒：FLOAT_VIEW 与 USE_FLOAT_BALL 均是受限 ACL 权限，需在[开发者中心申请 ACL](https://developer.huawei.com/consumer/cn/doc/doccenter-getting-started/agc-help-apply-acl-0000002394212138)。** 实际宿主声明两项权限，核对签名 profile；FLOAT_VIEW 还需用户授权，USE_FLOAT_BALL 不通过用户授权弹框申请。按[兼容性](../compatibility.md)核对 API26、Stage、SysCap、Phone/Tablet 实际支持情况及前台启动条件。
+首次修改前按[权限与提醒要求](../compatibility.md#权限声明acl-与用户授权)向开发者说明本次路线的权限条件和申请入口。
 
 先确定业务页面、窗模板与尺寸、球模板参数、首次展示窗还是球。参数及页面准备分别参考[窗路线](float-view.md)和[球路线](floating-ball.md)。所有方法使用 async/await、hilog 和 Promise<void>；失败记录后向调用方抛出。业务回调可选，状态由两个基础资产维护。
 
@@ -102,11 +102,11 @@ await FloatViewController.switchTemplate(property);
 // 成功后再把窗页面的响应式布局状态切换为紧凑布局。
 ```
 
-`switchTemplate` 只切换系统模板和窗口尺寸，不会替换页面内的组件。窗页面需维护自己的展开／紧凑布局状态，并用条件渲染切换内容；可使用 @Provide/@Consume 或宿主已有的状态方案共享。只有接口成功后才提交布局状态，失败保留原布局。切回展开布局时查询 ROUNDED_RECTANGLE 的限制，不能沿用横条模板的限制。过渡动画按产品需要实现，固定延时不能用来判定接口成功。
+`switchTemplate` 只切换系统模板和窗口尺寸，不会替换页面内的组件。窗页面需维护自己的展开／紧凑布局状态，并用条件渲染切换内容；顶部预留随状态同步：常规态（ROUNDED_RECTANGLE）top padding 32vp，mini 态（HORIZONTAL_BAR）top padding 4vp。可使用 @Provide/@Consume 或宿主已有的状态方案共享。只有接口成功后才提交布局状态，失败保留原布局。切回展开布局时查询 ROUNDED_RECTANGLE 的限制，不能沿用横条模板的限制。过渡动画按产品需要实现，固定延时不能用来判定接口成功。
 
 **仅调整窗尺寸**：模板不变时调用 `await FloatViewController.setWindowSize(size)`。size 使用 `window.Size`，单位为 px，需满足当前模板的尺寸及比例限制。实际窗口尺寸通过准备阶段的 `onRectChange` 回调或 `FloatViewController.getFloatViewProperties()` 读取；属性返回 undefined 时不继续使用。
 
-条目数量变化、显示区域变化和 onLimitsChange 都可能触发尺寸重算。按内容所需宽高和当前可用空间计算；设计尺寸若使用 vp，先用实际 UIContext 的 vp2px 转成 px，再检查当前模板的 minSize、maxSize 和 ratioLimits。超出允许大小时在页面内部滚动或截断，不能只扩大窗口。onLimitsChange 表示约束变化，onRectChange 才表示实际矩形变化；读取 avoidArea 后用 px2vp 转换到页面布局单位，避开不可交互区域。组件退出时退订它自己的显示与窗口回调。
+条目数量变化、显示区域变化、onLimitsChange 以及原工程既有断点或屏幕尺寸机制的更新都可能触发尺寸重算；窗是否借用原工程机制响应屏幕变化，按[窗路线的屏幕尺寸与断点响应](float-view.md#屏幕尺寸与断点响应借用原工程既有机制)执行，不为窗单独新增监听。按内容所需宽高和当前可用空间计算；设计尺寸若使用 vp，先用实际 UIContext 的 vp2px 转成 px，再检查当前模板的 minSize、maxSize 和 ratioLimits。重算结果只是请求值，系统可能按模板约束调整最终尺寸；页面内容行不写固定高度贴顶，垂直位置交给根容器居中（见[窗路线的请求尺寸说明](float-view.md#展开收起页面片段)）。超出允许大小时在页面内部滚动或截断，不能只扩大窗口。onLimitsChange 表示约束变化，onRectChange 才表示实际矩形变化；mini 态内容容器的左右 padding 分别取 avoidArea.leftRect.width、avoidArea.rightRect.width，经实际 UIContext.px2vp 转换后各加 6vp 内容留白，摘要和展开按钮都需避让；模板切换或矩形变化后重新读取，系统避让宽度动态读取，额外留白保持每侧 6vp；顶部固定预留（常规态 32vp、mini 态 4vp）不因 avoidArea 为空而省略。组件退出时退订它自己的显示与窗口回调。
 
 ### 球内容更新与条目轮换
 
@@ -195,4 +195,4 @@ release 仅清理监听和本地引用，不停止窗口，也不调用系统解
 
 运行[验证流程](../performance-validation.md)，静态与 Node 模拟测试不能替代 HarmonyOS 编译和真机系统切换验收。缺少签名、设备或系统条件时保留待验收状态。
 
-**实施结束再次提醒：两项权限均为受限 ACL，USE_FLOAT_BALL 必须申请，FLOAT_VIEW 必须申请并取得用户授权；提供[ACL 申请入口](https://developer.huawei.com/consumer/cn/doc/doccenter-getting-started/agc-help-apply-acl-0000002394212138)。**
+交付时按[权限与提醒要求](../compatibility.md#权限声明acl-与用户授权)向开发者说明本次路线的权限条件和申请入口。

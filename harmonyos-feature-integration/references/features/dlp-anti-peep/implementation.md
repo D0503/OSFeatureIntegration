@@ -4,7 +4,7 @@
 
 确认[兼容性](compatibility.md)中的设备、API、人脸识别及系统/应用开关条件。按[权限声明与 ACL](compatibility.md#权限声明与-acl)在实际宿主 `module.json5` 中声明 `ohos.permission.DLP_GET_HIDE_STATUS`，配置 `reason`、`usedScene` 及对应字符串资源。
 
-**实施前（首次修改工程前）提醒开发者：`ohos.permission.DLP_GET_HIDE_STATUS` 是受限 ACL 权限。** 仅本地调试防窥保护能力，自动签名时同意权限申请即可；应用上架需使用此能力，须在 HarmonyOS 开发者中心平台[申请 ACL 权限](https://developer.huawei.com/consumer/cn/doc/doccenter-getting-started/agc-help-apply-acl-0000002394212138)。
+首次修改前按[权限与提醒要求](compatibility.md#权限声明与-acl)向开发者说明本次路线的权限条件和申请入口。
 
 先确定需要保护的实际内容和窗口。下面的 `isPrivacyHidden` 表示目标内容的隐藏状态：工程已有对应状态时直接复用，并保留原来的初始显示策略；没有时再按此名称定义。必须将状态接入目标内容的实际渲染逻辑，隐藏时显示已确认的替代内容，恢复时展示原数据，不修改业务数据本身。
 
@@ -66,8 +66,8 @@ PASS=0，HIDE=1。机主独自注视时为非窥视，机主与非机主共同�
 以下处理内容的隐藏和恢复，在 HIDE 分支隐藏内容后预留系统蒙层接入位置。需要覆盖窗口时，按第 6 步补充完整分支及其导入、字段。状态变更必须对应实际目标控件的渲染。
 
 ```typescript
-private async handleAntiPeepStatus(status: dlpAntiPeep.DlpAntiPeepStatus): Promise<void> {
-  if (!this.isPageVisible || deviceInfo.sdkApiVersion < 20 || !canUseAntiPeep()) {
+private async handleAntiPeepStatus(status: dlpAntiPeep.DlpAntiPeepStatus | undefined): Promise<void> {
+  if (!this.isPageVisible || !deviceInfo.apiAvailable(20) || !canUseAntiPeep()) {
     return;
   }
   switch (status) {
@@ -79,7 +79,7 @@ private async handleAntiPeepStatus(status: dlpAntiPeep.DlpAntiPeepStatus): Promi
       // 系统蒙层的可选接入位置，完整分支见第 6 步。
       break;
     default:
-      hilog.warn(0x0000, 'AntiPeepUtils', '无法确认窥视状态：%{public}d', status);
+      hilog.warn(0x0000, 'AntiPeepUtils', '无法确认窥视状态：%{public}s', String(status));
       break;
   }
 }
@@ -97,7 +97,7 @@ private async initAntiPeepStatus(): Promise<void> {
     if (!this.isPageVisible) {
       return;
     }
-    if (deviceInfo.sdkApiVersion < 20 || !canUseAntiPeep()) {
+    if (!deviceInfo.apiAvailable(20) || !canUseAntiPeep()) {
       this.getUIContext().getPromptAction().showToast({ message: '当前设备不支持防窥保护' });
       return;
     }
@@ -126,7 +126,7 @@ private async initAntiPeepStatus(): Promise<void> {
 
 `isAntiPeepOn()` 在开关关闭、不支持或查询异常时均返回 `false`，具体原因查看工具日志。页面隐藏后不继续处理已返回的开关查询结果。需要应用内设置时，在上述 `if (!opened)` 分支的标注位置接入后面的可选代码；已开启分支和后续状态读取、订阅逻辑保持不变。
 
-确认开关开启后，`getAntiPeepInfo()` 获取初始状态并交给第 3 步，随后在尚未订阅时注册监听。状态查询失败返回的 `-1` 不作为 PASS，仍可订阅后续通知。`isListenOn` 直接保存订阅函数的返回值，失败原因由工具日志记录。
+确认开关开启后，`getAntiPeepInfo()` 获取初始状态并交给第 3 步，随后在尚未订阅时注册监听。不支持或状态查询失败时返回 `undefined`，保留当前显示策略，仍可订阅后续通知。`isListenOn` 直接保存订阅函数的返回值，失败原因由工具日志记录。
 
 ## 5. 页面展示时启动初始化
 
@@ -164,7 +164,7 @@ private isMaskRequesting: boolean = false;
 case dlpAntiPeep.DlpAntiPeepStatus.HIDE:
   this.isPrivacyHidden = true;
 
-  if (deviceInfo.sdkApiVersion < 21) {
+  if (!deviceInfo.apiAvailable(21)) {
     break;
   }
   if (this.isSystemLayerTriggered || this.isMaskRequesting) {
@@ -229,7 +229,7 @@ if (!opened) {
     listenOffAntiPeepStatus();
     this.isListenOn = false;
   }
-  if (deviceInfo.sdkApiVersion >= 23) {
+  if (deviceInfo.apiAvailable(23)) {
     if (this.isRequestingAntiPeep) {
       return;
     }
@@ -292,4 +292,4 @@ aboutToDisappear(): void {
 
 ## 结束提醒
 
-实施结束后的最终交付说明必须再次提醒开发者：`ohos.permission.DLP_GET_HIDE_STATUS` 是受限 ACL 权限；仅本地调试时，自动签名同意权限申请即可；应用上架需使用此能力时，须在 HarmonyOS 开发者中心平台[申请 ACL 权限](https://developer.huawei.com/consumer/cn/doc/doccenter-getting-started/agc-help-apply-acl-0000002394212138)。接入后需要重新签名；本地调试使用自动签名时，同意本次权限申请，并核对更新后的签名 profile 包含所需权限。实施前已提醒也不能省略。
+交付时按[权限与提醒要求](compatibility.md#权限声明与-acl)向开发者说明本次路线的权限条件和申请入口。

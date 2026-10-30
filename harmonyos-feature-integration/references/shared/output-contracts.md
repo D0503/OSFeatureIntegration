@@ -10,9 +10,10 @@
 
 按[验证闭环](../workflows/verification.md)由 `verify-development.mjs` 生成 `<工程>/os-feature-integration/integration-report.md`，`--output` 可覆盖目录。最终只交付一份 Markdown 与其引用的截图，不生成 JSON 汇总报告；过程日志与判定数据留在临时目录。未执行、未到达目标页或未判图均不得写成通过。
 
-涉及闪控窗／球或防窥保护时，最终交付说明必须再次包含对应能力包的权限提醒与 ACL 申请链接，不能因实施前已提醒而省略。窗球说明两项权限均为受限 ACL 权限，并按实际路线说明球须申请、窗须申请并取得用户授权；防窥说明 DLP_GET_HIDE_STATUS 为受限 ACL 权限，以及本地调试自动签名同意权限申请和上架须向开发者中心申请 ACL 的不同要求。具体文案见[窗球权限](../features/float-view-ball/compatibility.md)与[防窥权限](../features/dlp-anti-peep/compatibility.md)。
+涉及受限权限的能力，最终交付说明执行对应能力包的提醒要求：[窗球权限](../features/float-view-ball/compatibility.md#权限声明acl-与用户授权)、[防窥权限](../features/dlp-anti-peep/compatibility.md#权限声明与-acl)。
 
 报告更新及最终总结的一致性要求见[验证闭环：结果与存储](../workflows/verification.md#结果与存储)。
+验证结论与运行观察明细须经结构化补录生成；不直接编辑报告正文补结论。同一改造项重试只展示当前结果，回退实测截图按用途导入，保留原设备的功能与视觉结论。
 
 ## 故障排查
 
